@@ -111,7 +111,6 @@ export default function PaymentCard() {
           </FormControl>
         </Box>
 
-        {/* Términos */}
         <FormControlLabel
           control={<Checkbox checked={terms} onChange={(e) => setTerms(e.target.checked)} />}
           label={
@@ -120,7 +119,6 @@ export default function PaymentCard() {
             </Typography>
           }
         />
-
         <Box
           aria-hidden
           sx={{
