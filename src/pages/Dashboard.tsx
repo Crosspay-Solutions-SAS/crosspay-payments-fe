@@ -12,6 +12,7 @@ type Row = {
   monto: string
   concepto: string
   persona: string
+  empresa?: string
 }
 
 const rows: Row[] = Array.from({ length: 20 }).map((_, i) => ({
@@ -21,6 +22,7 @@ const rows: Row[] = Array.from({ length: 20 }).map((_, i) => ({
   monto: '$1,500.00',
   concepto: 'Pago de pruebas para recaudo con tarjeta.',
   persona: 'William Cárdenas Bohórquez',
+  empresa: 'Crosspay Solutions'
 }))
 
 
@@ -49,7 +51,7 @@ export default function Dashboard() {
               <Table stickyHeader size="medium" aria-label="tabla de operaciones">
                 <TableHead>
                   <TableRow>
-                    {['Fecha', 'Operador', 'Divisa', 'Monto', 'Concepto', 'Persona / Empresa'].map((h) => (
+                    {['Fecha', 'Operador', 'Divisa', 'Monto', 'Concepto', 'Persona', 'Empresa'].map((h) => (
                       <TableCell key={h} sx={{ fontWeight: 700 }}>{h}</TableCell>
                     ))}
                   </TableRow>
@@ -63,6 +65,7 @@ export default function Dashboard() {
                       <TableCell>{r.monto}</TableCell>
                       <TableCell sx={{ minWidth: 320 }}>{r.concepto}</TableCell>
                       <TableCell>{r.persona}</TableCell>
+                      <TableCell>{r.empresa}</TableCell>
                     </TableRow>
                   ))}
                 </TableBody>
