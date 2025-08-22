@@ -18,24 +18,16 @@ const providers = [
 
 const GRADIENT = 'linear-gradient(90deg, #5036F6 0%, #E937B1 100%)'
 
-const formatCOP = (n: number) =>
-  `COP ${new Intl.NumberFormat('es-CO', { style: 'currency', currency: 'COP' })
-    .format(n).replace('$', '$ ')}`
-
 export default function PaymentCard() {
   const [provider, setProvider] = React.useState<string>('Bancolombia')
   const [terms, setTerms] = React.useState(false)
+
+  const [currency, setCurrency] = React.useState<'COP' | 'MXN' | 'ARS'>('COP')
   const [amountRaw, setAmountRaw] = React.useState<string>('100000')
-  const [amountDisplay, setAmountDisplay] = React.useState<string>(formatCOP(100000))
 
   const handleAmountChange = (val: string) => {
     const cleaned = val.replace(/[^\d]/g, '')
     setAmountRaw(cleaned)
-  }
-
-  const commitAmount = () => {
-    const num = Number(amountRaw || '0')
-    setAmountDisplay(formatCOP(num))
   }
 
   return (
@@ -52,33 +44,46 @@ export default function PaymentCard() {
 
         <Divider sx={{ my: 0.5 }} />
 
-        <Box textAlign="center">
-          <Typography variant="body2" sx={{ mb: 0.75 }}>
+        {/* Monto (alineado a la izquierda) + divisa */}
+        <Box>
+          <Typography variant="body2" fontWeight={800} sx={{ mb: 0.75, color: '#1e1a30' }}>
             Monto de la transacción
           </Typography>
-          <TextField
-            fullWidth
-            value={amountRaw}
-            onChange={(e) => handleAmountChange(e.target.value)}
-            onBlur={commitAmount}
-            placeholder="100000"
-            inputProps={{ inputMode: 'numeric' }}
-            InputProps={{
-              startAdornment: <InputAdornment position="start">COP $</InputAdornment>,
-              sx: {
-                fontWeight: 800,
-                fontSize: '1.4rem',
-                textAlign: 'center',
-                '& input': { textAlign: 'center', fontWeight: 800, color: '#45208C', fontSize: '1.4rem' },
-              },
-            }}
-            sx={{ maxWidth: 300, mx: 'auto' }}
-          />
-          <Typography sx={{ mt: 0.75, fontWeight: 800, color: '#45208C' }}>
-            {amountDisplay}
-          </Typography>
+
+          <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+            <FormControl sx={{ minWidth: 140 }}>
+              <InputLabel id="currency-label" sx={{ display: 'none' }}>Divisa</InputLabel>
+              <Select
+                labelId="currency-label"
+                value={currency}
+                onChange={(e) => setCurrency(e.target.value as 'COP' | 'MXN' | 'ARS')}
+                IconComponent={ExpandMoreRoundedIcon}
+                MenuProps={{ PaperProps: { sx: { borderRadius: 2 } } }}
+              >
+                <MenuItem value="COP">COP</MenuItem>
+                <MenuItem value="MXN">MXN</MenuItem>
+                <MenuItem value="ARS">ARS</MenuItem>
+              </Select>
+            </FormControl>
+
+            <TextField
+              fullWidth
+              value={amountRaw}
+              onChange={(e) => handleAmountChange(e.target.value)}
+              placeholder="100000"
+              inputProps={{ inputMode: 'numeric' }}
+              InputProps={{
+                startAdornment: (
+                  <InputAdornment position="start">
+                    {currency} $
+                  </InputAdornment>
+                ),
+              }}
+            />
+          </Stack>
         </Box>
 
+        {/* Concepto */}
         <Box>
           <Typography variant="body2" fontWeight={800} sx={{ mb: 0.75, color: '#1e1a30' }}>
             Concepto
@@ -90,6 +95,7 @@ export default function PaymentCard() {
           />
         </Box>
 
+        {/* Proveedor */}
         <Box>
           <Typography fontWeight={800} variant="body2" sx={{ mb: 0.75, color: '#1e1a30' }}>
             Elige un proveedor de pago
@@ -111,6 +117,7 @@ export default function PaymentCard() {
           </FormControl>
         </Box>
 
+        {/* Términos */}
         <FormControlLabel
           control={<Checkbox checked={terms} onChange={(e) => setTerms(e.target.checked)} />}
           label={
@@ -119,6 +126,8 @@ export default function PaymentCard() {
             </Typography>
           }
         />
+
+        {/* Marca de agua */}
         <Box
           aria-hidden
           sx={{
@@ -136,6 +145,8 @@ export default function PaymentCard() {
             sx={{ width: 140, height: 'auto' }}
           />
         </Box>
+
+        {/* Botón */}
         <Button
           variant="contained"
           fullWidth
@@ -170,6 +181,7 @@ export default function PaymentCard() {
         >
           Realizar el pago
         </Button>
+
         <Typography variant="caption" color="text.secondary" textAlign="center">
           Tiempo restante: 09:59:59
         </Typography>

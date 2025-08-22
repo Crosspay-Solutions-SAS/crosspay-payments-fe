@@ -9,7 +9,13 @@ export const COLORS = {
   textParagraph: '#5E5E5E',
   chevron: '#999999',
   shadow: 'rgba(30, 26, 48, 0.1)',
+  purple: '#5036F6',
+  pink: '#E937B1',
+  border: '#ECECEC',
+  text: '#1E1A30',
+  paragraph: '#5E5E5E',
 }
+
 
 const theme = createTheme({
   palette: {
@@ -65,6 +71,7 @@ const theme = createTheme({
           paddingBlock: '0.875rem',
           textTransform: 'none',
           fontWeight: 700,
+          background: COLORS.btn1,
         },
       },
     },

@@ -4,7 +4,8 @@ import theme from './theme'
 import '@fontsource/dm-sans/400.css'
 import '@fontsource/dm-sans/500.css'
 import '@fontsource/dm-sans/700.css'
-import PaymentCard from './components/PaymentCard'
+///import PaymentCard from './pages/PaymentCard' TODO: Set up routing.
+import Dashboard from './pages/Dashboard'
 
 export default function App() {
   return (
@@ -29,7 +30,7 @@ export default function App() {
             alt="Crosspay Solutions"
             sx={{ height: 40, width: 'auto' }}
           />
-          <PaymentCard />
+          <Dashboard />
         </Stack>
       </Container>
     </ThemeProvider>
