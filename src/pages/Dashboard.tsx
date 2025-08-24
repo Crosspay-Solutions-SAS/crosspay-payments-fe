@@ -1,5 +1,5 @@
 import {
-  Box, Stack, Typography, Divider, Paper, Table, TableHead, TableRow, TableCell, TableBody, TableContainer, Chip
+  Box, Stack, Typography, Divider, Paper, Table, TableHead, TableRow, TableCell, TableBody, TableContainer, Chip,
 } from '@mui/material'
 import Sidebar from '../components/sidebar'
 import { COLORS } from '../theme'
