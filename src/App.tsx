@@ -4,7 +4,7 @@ import theme from './theme'
 import '@fontsource/dm-sans/400.css'
 import '@fontsource/dm-sans/500.css'
 import '@fontsource/dm-sans/700.css'
-///import PaymentCard from './pages/PaymentCard' TODO: Set up routing.
+/* import PaymentCard from './pages/PaymentCard' */ /* TODO: Set up routing. */
 import Dashboard from './pages/Dashboard'
 
 export default function App() {
@@ -15,22 +15,16 @@ export default function App() {
         maxWidth={false}
         disableGutters
         sx={{
-          minHeight: '100dvh',
+          Height: '100dvh',
           minWidth: '100%',
           display: 'flex',
           alignItems: 'center',
           justifyContent: 'center',
-          py: 4,
         }}
       >
         <Stack spacing={2} alignItems="center">
-          <Box
-            component="img"
-            src="/crosspay-solutions-logo-color.svg"
-            alt="Crosspay Solutions"
-            sx={{ height: 40, width: 'auto' }}
-          />
           <Dashboard />
+          {/* <PaymentCard /> */}
         </Stack>
       </Container>
     </ThemeProvider>

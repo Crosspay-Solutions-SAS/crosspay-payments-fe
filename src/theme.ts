@@ -5,6 +5,7 @@ export const COLORS = {
   bgSec: '#FFFFFF',
   btn1: '#5036F6',
   btn2: '#E937B1',
+  btn3: '#E6E6E6',
   textTitle: '#1E1A30',
   textParagraph: '#5E5E5E',
   chevron: '#999999',
@@ -12,8 +13,10 @@ export const COLORS = {
   purple: '#5036F6',
   pink: '#E937B1',
   border: '#ECECEC',
+  border2: '#cacacaff',
   text: '#1E1A30',
   paragraph: '#5E5E5E',
+  label: '#a8a8a8ff',
 }
 
 
@@ -34,7 +37,7 @@ const theme = createTheme({
     borderRadius: 10,
   },
   typography: {
-    fontFamily: '"DM Sans", system-ui, -apple-system, Segoe UI, Roboto, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji", "Segoe UI Emoji", "Segoe UI Symbol"',
+    fontFamily: '"DM Sans", Arial, "Noto Sans"',
     h4: { fontWeight: 700 },
     body2: { color: COLORS.textParagraph },
   },

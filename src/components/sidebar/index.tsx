@@ -16,13 +16,13 @@ export default function Sidebar() {
       component="aside"
       sx={{
         width: 260,
-        bgcolor: '#fff',
+        bgcolor: 'transparent',
         borderRight: `1px solid ${COLORS.border}`,
         px: 2.5,
         py: 3,
         display: 'flex',
         flexDirection: 'column',
-        gap: 2,
+        gap: 1,
         height: '100dvh',
         position: 'sticky',
         top: 0,
@@ -36,15 +36,43 @@ export default function Sidebar() {
       />
 
       <List component="nav" sx={{ mt: 2 }}>
-        <ListItemButton selected sx={{ borderRadius: 2 }}>
+        <ListItemButton
+          selected
+          sx={{
+            borderRadius: 1,
+            bgcolor: "primary.main", // Fondo cuando está seleccionado
+            color: "textTitle",
+            "&:hover": {
+              bgcolor: "primary.dark", // Fondo en hover
+            },
+          }}
+        >
           <ListItemText
             primary={<Typography fontWeight={700}>Panel de Control</Typography>}
           />
         </ListItemButton>
-        <ListItemButton sx={{ borderRadius: 2 }}>
+
+        <ListItemButton
+          sx={{
+            borderRadius: 1,
+            bgcolor: "grey.100", // Fondo normal
+            "&:hover": {
+              bgcolor: "grey.200",
+            },
+          }}
+        >
           <ListItemText primary="Configuración" />
         </ListItemButton>
-        <ListItemButton sx={{ borderRadius: 2 }}>
+
+        <ListItemButton
+          sx={{
+            borderRadius: 1,
+            bgcolor: "grey.100",
+            "&:hover": {
+              bgcolor: "grey.200",
+            },
+          }}
+        >
           <ListItemText primary="Cuenta" />
         </ListItemButton>
       </List>

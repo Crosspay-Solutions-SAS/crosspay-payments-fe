@@ -1,5 +1,5 @@
 :root {
-  font-family: system-ui, Avenir, Helvetica, Arial, sans-serif;
+  font-family: DM Sans, sans-serif;
   line-height: 1.5;
   font-weight: 400;
 
@@ -28,7 +28,7 @@ body {
   place-items: center;
   min-width: 420px;
   justify-content: center;
-  min-height: 105vh;
+  min-height: 100vh;
 }
 
 h1 {
