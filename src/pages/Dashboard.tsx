@@ -8,36 +8,73 @@ import DonutRing from '../components/donutRing'
 import * as React from 'react'
 
 // =======================
-// CONFIG/API
+// CONFIG API y AUTH
 // =======================
-const API_BASE_URL = 'https://81eb8c15a447.ngrok-free.app'
-const ADMIN_GET_TRANSACTIONS = '/admin/transactions'                 // ?limit=10&page=1
+const API_BASE_URL = 'https://9d0921671656.ngrok-free.app'
+
+// Endpoints
+const ADMIN_GET_TRANSACTIONS = '/admin/transactions'
 const ADMIN_GET_STATS_OVERVIEW = '/admin/transactions/stats/overview'
+const AUTH_LOGIN = '/auth/login'
 
-// Lee adminToken (backend dev) y token (compat)
-const getAuthToken = () => localStorage.getItem('adminToken') || localStorage.getItem('token') || ''
+// Credenciales Admin (por ahora en el mismo archivo)
+const ADMIN_EMAIL = 'admin@crosspay.com'
+const ADMIN_PASSWORD = 'admin123'
 
-const clearAuthToken = () => {
-  localStorage.removeItem('adminToken')
-  localStorage.removeItem('token')
+// Mantiene el token actual para que lo lean helpers fuera del componente si hace falta
+let CURRENT_TOKEN: string | null = null
+
+// Login directo: obtiene y retorna el token
+async function apiLogin(): Promise<string> {
+  const res = await fetch(`${API_BASE_URL}${AUTH_LOGIN}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      email: ADMIN_EMAIL,
+      password: ADMIN_PASSWORD,
+    }),
+  })
+  const text = await res.text()
+  let data: any
+  try { data = text ? JSON.parse(text) : {} } catch { data = text }
+
+  if (!res.ok || !data?.token) {
+    const msg = data?.message || text || `Login failed (${res.status})`
+    throw new Error(msg)
+  }
+  return data.token as string
 }
 
+// GET con auth y reintento si el token expiró
 async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getAuthToken()
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  // asegura token
+  if (!CURRENT_TOKEN) {
+    CURRENT_TOKEN = await apiLogin()
+  }
+
+  // primer intento
+  let res = await fetch(`${API_BASE_URL}${path}`, {
     ...init,
     method: 'GET',
     headers: {
-      'Accept': 'application/json',
-      ...(token ? { Authorization: `Bearer ${token}` } : {}),
+      Accept: 'application/json',
+      Authorization: `Bearer ${CURRENT_TOKEN}`,
       ...(init?.headers || {}),
     },
   })
 
-  // Si el backend dice no autorizado, limpiamos y damos un mensaje claro
+  // si expiró, relogin y reintenta 1 vez
   if (res.status === 401 || res.status === 403) {
-    clearAuthToken()
-    throw new Error('Token de acceso requerido. Inicia sesión de admin.')
+    CURRENT_TOKEN = await apiLogin()
+    res = await fetch(`${API_BASE_URL}${path}`, {
+      ...init,
+      method: 'GET',
+      headers: {
+        Accept: 'application/json',
+        Authorization: `Bearer ${CURRENT_TOKEN}`,
+        ...(init?.headers || {}),
+      },
+    })
   }
 
   const text = await res.text()
@@ -45,14 +82,14 @@ async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
   try { data = text ? JSON.parse(text) : {} } catch { data = text }
 
   if (!res.ok) {
-    const msg = data?.message || text || `GET ${path} failed (${res.status})`
+    const msg = (data && data.message) || text || `GET ${path} failed (${res.status})`
     throw new Error(msg)
   }
   return (data ?? {}) as T
 }
 
 // =======================
-// TIPOS (flexibles)
+// TIPOS
 // =======================
 type TxRaw = any
 type TxUI = {
@@ -99,7 +136,7 @@ function fmtAmount(amount: number, currency: string) {
       maximumFractionDigits: 2
     }).format(amount)
   } catch {
-    return `${currency || ''} ${amount.toLocaleString('es-CO')}`
+    return `${currency || ''} ${Number(amount ?? 0).toLocaleString('es-CO')}`
   }
 }
 
@@ -107,7 +144,6 @@ function mapTxToUI(raw: TxRaw): TxUI {
   const id = raw.id || raw.transactionId || raw.paymentId || raw._id || ''
   const created = raw.createdAt || raw.created_at || raw.date || raw.timestamp || new Date().toISOString()
   const currency = raw.currency || raw.curr || 'COP'
-  // Si tu backend devuelve centavos, cambia a: const amountNum = Number(raw.amount ?? 0) / 100
   const amountNum = Number(raw.amount ?? raw.total ?? raw.value ?? 0)
 
   const concepto =
@@ -172,17 +208,42 @@ export default function Dashboard() {
   const [total, setTotal] = React.useState(0)
   const [page, setPage] = React.useState(0)        // MUI 0-based
   const [rowsPerPage, setRowsPerPage] = React.useState(10)
+
   const [loading, setLoading] = React.useState(false)
   const [error, setError] = React.useState<string | null>(null)
 
   const [stats, setStats] = React.useState<StatsOverview | null>(null)
   const [loadingStats, setLoadingStats] = React.useState(false)
 
+  const [authLoading, setAuthLoading] = React.useState(true)
+  const [authError, setAuthError] = React.useState<string | null>(null)
+
+  // Hace login al montar y deja el token listo en CURRENT_TOKEN
+  React.useEffect(() => {
+    let mounted = true
+    ;(async () => {
+      setAuthLoading(true)
+      setAuthError(null)
+      try {
+        const token = await apiLogin()
+        if (!mounted) return
+        CURRENT_TOKEN = token
+      } catch (e: any) {
+        if (!mounted) return
+        setAuthError(e?.message || 'No se pudo autenticar.')
+      } finally {
+        if (mounted) setAuthLoading(false)
+      }
+    })()
+    return () => { mounted = false }
+  }, [])
+
   const loadTransactions = React.useCallback(async () => {
     setLoading(true)
     setError(null)
     try {
-      const resp = await apiGet<any>(`${ADMIN_GET_TRANSACTIONS}?limit=${rowsPerPage}&page=${page + 1}`)
+      const query = `?limit=${rowsPerPage}&page=${page + 1}`
+      const resp = await apiGet<any>(`${ADMIN_GET_TRANSACTIONS}${query}`)
       const norm = normalizePagination(resp)
       const mapped = norm.items.map(mapTxToUI)
       setRows(mapped)
@@ -216,17 +277,15 @@ export default function Dashboard() {
     }
   }, [])
 
+  // carga data cuando ya hay auth
   React.useEffect(() => {
-    loadTransactions()
-  }, [loadTransactions])
+    if (!authLoading && !authError) {
+      loadTransactions()
+      loadStats()
+    }
+  }, [authLoading, authError, loadTransactions, loadStats])
 
-  React.useEffect(() => {
-    loadStats()
-  }, [loadStats])
-
-  const handleChangePage = (_: unknown, newPage: number) => {
-    setPage(newPage)
-  }
+  const handleChangePage = (_: unknown, newPage: number) => setPage(newPage)
   const handleChangeRowsPerPage = (e: React.ChangeEvent<HTMLInputElement>) => {
     setRowsPerPage(parseInt(e.target.value, 10))
     setPage(0)
@@ -246,129 +305,146 @@ export default function Dashboard() {
         </Typography>
         <Divider sx={{ mb: 0 }} />
 
-        <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3} alignItems="stretch">
-          {/* Tabla de transacciones */}
-          <Paper
-            sx={{
-              flex: 1,
-              p: 1,
-              borderRadius: 0,
-              overflow: 'hidden',
-              backgroundColor: 'transparent',
-              borderRight: `1px solid ${COLORS.border}`,
-              boxShadow: 'none',
-            }}
-          >
-            {error && (
-              <Box sx={{ px: 2, py: 1 }}>
-                <Alert severity="error" variant="filled">{error}</Alert>
-              </Box>
-            )}
+        {/* Estado de autenticación */}
+        {authLoading && (
+          <Box sx={{ p: 3, display: 'flex', alignItems: 'center', gap: 1 }}>
+            <CircularProgress size={18} />
+            <Typography variant="body2">Autenticando…</Typography>
+          </Box>
+        )}
+        {authError && (
+          <Box sx={{ p: 3 }}>
+            <Alert severity="error" variant="filled">
+              {authError}
+            </Alert>
+          </Box>
+        )}
 
-            <TableContainer
+        {!authLoading && !authError && (
+          <Stack direction={{ xs: 'column', lg: 'row' }} spacing={3} alignItems="stretch">
+            <Paper
               sx={{
-                maxHeight: 700,
-                pr: 4,
-                '&::-webkit-scrollbar': { width: '6px' },
-                '&::-webkit-scrollbar-track': { backgroundColor: COLORS.border },
-                '&::-webkit-scrollbar-thumb': { backgroundColor: COLORS.border2, borderRadius: '10px' },
-                '&::-webkit-scrollbar-thumb:hover': { backgroundColor: COLORS.chevron },
+                flex: 1,
+                p: 1,
+                borderRadius: 0,
+                overflow: 'hidden',
+                backgroundColor: 'transparent',
+                borderRight: `1px solid ${COLORS.border}`,
+                boxShadow: 'none',
               }}
             >
-              <Table stickyHeader size="small" aria-label="tabla de operaciones">
-                <TableHead>
-                  <TableRow>
-                    {['Fecha', 'Operador', 'Divisa', 'Monto', 'Concepto', 'Persona', 'Empresa'].map((h) => (
-                      <TableCell key={h} sx={{ bgcolor: 'bgMain', pt: 4 }}>{h}</TableCell>
-                    ))}
-                  </TableRow>
-                </TableHead>
-                <TableBody>
-                  {loading ? (
-                    <TableRow>
-                      <TableCell colSpan={7}>
-                        <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}>
-                          <CircularProgress size={18} />
-                          <Typography variant="body2">Cargando transacciones…</Typography>
-                        </Box>
-                      </TableCell>
-                    </TableRow>
-                  ) : rows.length === 0 ? (
-                    <TableRow>
-                      <TableCell colSpan={7}>
-                        <Typography variant="body2" sx={{ py: 2, color: COLORS.chevron }}>
-                          No hay transacciones para mostrar.
-                        </Typography>
-                      </TableCell>
-                    </TableRow>
-                  ) : (
-                    rows.map((r) => (
-                      <TableRow key={r.id} hover>
-                        <TableCell>{r.fecha}</TableCell>
-                        <TableCell>{r.operador}</TableCell>
-                        <TableCell>{r.divisa}</TableCell>
-                        <TableCell>{r.monto}</TableCell>
-                        <TableCell sx={{ minWidth: 320 }}>{r.concepto}</TableCell>
-                        <TableCell>{r.persona}</TableCell>
-                        <TableCell>{r.empresa || '—'}</TableCell>
-                      </TableRow>
-                    ))
-                  )}
-                </TableBody>
-              </Table>
-            </TableContainer>
-
-            <TablePagination
-              component="div"
-              count={total}
-              page={page}
-              onPageChange={handleChangePage}
-              rowsPerPage={rowsPerPage}
-              onRowsPerPageChange={handleChangeRowsPerPage}
-              rowsPerPageOptions={[5, 10, 25, 50]}
-              labelRowsPerPage="Filas por página"
-            />
-          </Paper>
-
-          {/* Panel de totales / donuts */}
-          <Paper
-            sx={{
-              width: { xs: '100%', lg: 380 },
-              p: 2.5,
-              borderRadius: 0,
-              backgroundColor: 'transparent',
-              boxShadow: 'none',
-            }}
-          >
-            <Typography fontWeight={800} sx={{ mb: 6, textAlign: 'center' }}>
-              Total de Transacciones
-            </Typography>
-
-            <Stack spacing={4}>
-              <DonutRing
-                total={totalTx}
-                primary={paid}
-                secondary={nonPaid}
-                subtitleBottom="OVERVIEW"
-                subtitleTop=""
-              />
-              <Divider />
-              <DonutRing
-                total={(stats?.failed ?? 0) + (stats?.pending ?? 0)}
-                primary={stats?.failed ?? 0}
-                secondary={stats?.pending ?? 0}
-                subtitleBottom="FALLIDAS / PENDIENTES"
-                subtitleTop=""
-              />
-              {loadingStats && (
-                <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
-                  <CircularProgress size={16} />
-                  <Typography variant="caption">Actualizando métricas…</Typography>
+              {/* Errores de data */}
+              {error && (
+                <Box sx={{ px: 2, py: 1 }}>
+                  <Alert severity="error" variant="filled">{error}</Alert>
                 </Box>
               )}
-            </Stack>
-          </Paper>
-        </Stack>
+
+              <TableContainer
+                sx={{
+                  maxHeight: 700,
+                  pr: 4,
+                  '&::-webkit-scrollbar': { width: '6px' },
+                  '&::-webkit-scrollbar-track': { backgroundColor: COLORS.border },
+                  '&::-webkit-scrollbar-thumb': { backgroundColor: COLORS.border2, borderRadius: '10px' },
+                  '&::-webkit-scrollbar-thumb:hover': { backgroundColor: COLORS.chevron },
+                }}
+              >
+                <Table stickyHeader size="small" aria-label="tabla de operaciones">
+                  <TableHead>
+                    <TableRow>
+                      {['Fecha', 'Operador', 'Divisa', 'Monto', 'Concepto', 'Persona', 'Empresa'].map((h) => (
+                        <TableCell key={h} sx={{ bgcolor: 'bgMain', pt: 4 }}>{h}</TableCell>
+                      ))}
+                    </TableRow>
+                  </TableHead>
+                  <TableBody>
+                    {loading ? (
+                      <TableRow>
+                        <TableCell colSpan={7}>
+                          <Box sx={{ display: 'flex', alignItems: 'center', gap: 1, py: 2 }}>
+                            <CircularProgress size={18} />
+                            <Typography variant="body2">Cargando transacciones…</Typography>
+                          </Box>
+                        </TableCell>
+                      </TableRow>
+                    ) : rows.length === 0 ? (
+                      <TableRow>
+                        <TableCell colSpan={7}>
+                          <Typography variant="body2" sx={{ py: 2, color: COLORS.chevron }}>
+                            No hay transacciones para mostrar.
+                          </Typography>
+                        </TableCell>
+                      </TableRow>
+                    ) : (
+                      rows.map((r) => (
+                        <TableRow key={r.id} hover>
+                          <TableCell>{r.fecha}</TableCell>
+                          <TableCell>{r.operador}</TableCell>
+                          <TableCell>{r.divisa}</TableCell>
+                          <TableCell>{r.monto}</TableCell>
+                          <TableCell sx={{ minWidth: 320 }}>{r.concepto}</TableCell>
+                          <TableCell>{r.persona}</TableCell>
+                          <TableCell>{r.empresa || '—'}</TableCell>
+                        </TableRow>
+                      ))
+                    )}
+                  </TableBody>
+                </Table>
+              </TableContainer>
+
+              <TablePagination
+                component="div"
+                count={total}
+                page={page}
+                onPageChange={handleChangePage}
+                rowsPerPage={rowsPerPage}
+                onRowsPerPageChange={handleChangeRowsPerPage}
+                rowsPerPageOptions={[5, 10, 25, 50]}
+                labelRowsPerPage="Filas por página"
+              />
+            </Paper>
+
+            {/* Panel de totales / donuts */}
+            <Paper
+              sx={{
+                width: { xs: '100%', lg: 380 },
+                p: 2.5,
+                borderRadius: 0,
+                backgroundColor: 'transparent',
+                boxShadow: 'none',
+              }}
+            >
+              <Typography fontWeight={800} sx={{ mb: 6, textAlign: 'center' }}>
+                Total de Transacciones
+              </Typography>
+
+              <Stack spacing={4}>
+                <DonutRing
+                  total={totalTx}
+                  primary={paid}
+                  secondary={nonPaid}
+                  subtitleBottom="OVERVIEW"
+                  subtitleTop=""
+                />
+                <Divider />
+                <DonutRing
+                  total={(stats?.failed ?? 0) + (stats?.pending ?? 0)}
+                  primary={stats?.failed ?? 0}
+                  secondary={stats?.pending ?? 0}
+                  subtitleBottom="FALLIDAS / PENDIENTES"
+                  subtitleTop=""
+                />
+                {loadingStats && (
+                  <Box sx={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 1 }}>
+                    <CircularProgress size={16} />
+                    <Typography variant="caption">Actualizando métricas…</Typography>
+                  </Box>
+                )}
+              </Stack>
+            </Paper>
+          </Stack>
+        )}
       </Box>
     </Box>
   )

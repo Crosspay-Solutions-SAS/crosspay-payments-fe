@@ -11,16 +11,11 @@ import { Routes, Route, Navigate } from 'react-router-dom'
 
 import PaymentCard from './pages/PaymentCard'
 import Dashboard from './pages/Dashboard'
-import AdminLogin from './pages/Login' 
+import Cuenta from './pages/Account'
+import Configuracion from './pages/Settings'
 
 const getAuthToken = () =>
   localStorage.getItem('adminToken') || localStorage.getItem('token') || ''
-
-function ProtectedRoute({ children }: { children: React.ReactNode }) {
-  const token = getAuthToken()
-  if (!token) return <Navigate to="/login" replace />
-  return <>{children}</>
-}
 
 export default function App() {
   // soportar ?token=... una vez
@@ -33,7 +28,6 @@ export default function App() {
   }, [])
 
   const token = getAuthToken()
-  const defaultRoute = token ? '/admin' : '/login'
 
   return (
     <ThemeProvider theme={theme}>
@@ -42,34 +36,19 @@ export default function App() {
         {/* Pública */}
         <Route path="/payment" element={<PaymentCard />} />
 
-        {/* Login admin */}
-        <Route
-          path="/login"
-          element={
-            token ? (
-              <Navigate to="/admin" replace />
-            ) : (
-              <AdminLogin
-                onSuccess={() => {
-                  window.location.replace('/admin')
-                }}
-              />
-            )
-          }
-        />
+        {/* Admin directo */}
+        <Route path="/admin" element={<Dashboard />} />
+        <Route path="/cuenta" element={<Cuenta />} />
+        <Route path="/configuracion" element={<Configuracion />} />
+
+
+        {/* Redirigir raíz directamente a admin */}
+        <Route path="/" element={<Navigate to="/admin" replace />} />
 
         <Route
-          path="/admin"
-          element={
-            <ProtectedRoute>
-              <Dashboard />
-            </ProtectedRoute>
-          }
+          path="*"
+          element={<div style={{ padding: 24 }}>404 • Página no encontrada</div>}
         />
-
-        <Route path="/" element={<Navigate to={defaultRoute} replace />} />
-
-        <Route path="*" element={<div style={{ padding: 24 }}>404 • Página no encontrada</div>} />
       </Routes>
     </ThemeProvider>
   )

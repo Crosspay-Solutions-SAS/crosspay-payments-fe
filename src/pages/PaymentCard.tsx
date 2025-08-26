@@ -7,17 +7,20 @@ import {
   FormControl, Button, Divider, InputAdornment, Snackbar, Alert, CircularProgress
 } from '@mui/material'
 
+// =======================
+// CONFIG/API
+// =======================
+// Normalizo BASE para evitar doble slash en fetch
+const API_BASE_URL = 'https://9d0921671656.ngrok-free.app/'
+const CLIENT_CREATE_PAYMENT = '/client/payment'
+const CLIENT_GET_PSE_METHODS = '/client/pse-methods'
 
-const API_BASE_URL = 'https://81eb8c15a447.ngrok-free.app';
-const CLIENT_CREATE_PAYMENT = '/client/payment';
-
-const CLIENT_GET_PSE_METHODS = '/client/pse-methods';
-
-const getAuthToken = () => localStorage.getItem('token') || undefined;
+const getAuthToken = () => localStorage.getItem('token') || undefined
+const BASE = API_BASE_URL.replace(/\/+$/, '')
 
 async function apiPost<T>(path: string, body: unknown, init?: RequestInit): Promise<T> {
-  const token = getAuthToken();
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const token = getAuthToken()
+  const res = await fetch(`${BASE}${path}`, {
     ...init,
     method: 'POST',
     headers: {
@@ -27,23 +30,23 @@ async function apiPost<T>(path: string, body: unknown, init?: RequestInit): Prom
       ...(init?.headers || {}),
     },
     body: JSON.stringify(body),
-  });
-  const text = await res.text();
-  let data: any;
-  try { data = text ? JSON.parse(text) : {}; } catch { data = text; }
+  })
+  const text = await res.text()
+  let data: any
+  try { data = text ? JSON.parse(text) : {} } catch { data = text }
 
   if (!res.ok) {
     const msg = data?.errors?.length
       ? data.errors.map((e: any) => e.message).join(' • ')
-      : (data?.message || text || `POST ${path} failed (${res.status})`);
-    throw new Error(msg);
+      : (data?.message || text || `POST ${path} failed (${res.status})`)
+    throw new Error(msg)
   }
-  return (data ?? {}) as T;
+  return (data ?? {}) as T
 }
 
 async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
-  const token = getAuthToken();
-  const res = await fetch(`${API_BASE_URL}${path}`, {
+  const token = getAuthToken()
+  const res = await fetch(`${BASE}${path}`, {
     ...init,
     method: 'GET',
     headers: {
@@ -51,180 +54,190 @@ async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
       ...(token ? { 'Authorization': `Bearer ${token}` } : {}),
       ...(init?.headers || {}),
     },
-  });
+  })
+  const text = await res.text()
+  let data: any
+  try { data = text ? JSON.parse(text) : {} } catch { data = text }
   if (!res.ok) {
-    const text = await res.text();
-    throw new Error(text || `GET ${path} failed (${res.status})`);
+    const msg = data?.message || text || `GET ${path} failed (${res.status})`
+    throw new Error(msg)
   }
-  return res.json() as Promise<T>;
+  return (data ?? {}) as T
 }
 
-type Currency = 'COP' | 'MXN' | 'ARS';
-type ProviderUi = 'Pagos PSE' | 'Tarjetas de Crédito/Débito';
+// =======================
+// TIPOS
+// =======================
+type Currency = 'COP' | 'MXN' | 'ARS'
+type ProviderUi = 'Pagos PSE' | 'Tarjetas de Crédito/Débito'
 
 type PaymentResponse = {
-  success?: boolean;
-  paymentId?: string;
-  status?: 'created' | 'processing' | 'requires_action' | 'failed' | 'paid';
-  redirectUrl?: string;
-  message?: string;
-  errors?: Array<{ message: string }>;
-};
+  success?: boolean
+  paymentId?: string
+  transactionId?: string
+  status?: 'created' | 'processing' | 'requires_action' | 'failed' | 'paid' | 'pending'
+  message?: string
+  gateway?: string
+  // posibles urls de checkout
+  checkoutUrl?: string
+  paymentUrl?: string
+  redirectUrl?: string
+  errors?: Array<{ message: string }>
+}
 
-type PseMethod = { code: string; name: string };
+type PseMethod = { code: string; name: string }
 
+// =======================
+// UTILS
+// =======================
+const GRADIENT = `linear-gradient(90deg, ${COLORS.btn1} 0%, ${COLORS.btn2} 100%)`
+const onlyDigits = (s: string) => s.replace(/\D/g, '')
+const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 
-const GRADIENT = `linear-gradient(90deg, ${COLORS.btn1} 0%, ${COLORS.btn2} 100%)`;
-const onlyDigits = (s: string) => s.replace(/\D/g, '');
-const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
-
+// Fallbacks PSE
 const PSE_BANKS_FALLBACK: PseMethod[] = [
   { code: 'Bancolombia', name: 'Bancolombia' },
-  { code: 'DAVIVIENDA', name: 'Davivienda' },
+  { code: 'Davivienda', name: 'Davivienda' },
   { code: 'BBVA', name: 'BBVA' },
   { code: 'BANCO_DE_BOGOTA', name: 'Banco de Bogotá' },
   { code: 'BANCO_POPULAR', name: 'Banco Popular' },
-];
+]
+const DOC_TYPES = ['CC', 'CE', 'NIT', 'TI', 'PP'] as const
+const PERSON_TYPES = ['natural', 'juridica'] as const
 
-const DOC_TYPES = ['CC', 'CE', 'NIT', 'TI', 'PP'] as const;
-const PERSON_TYPES = ['natural', 'juridica'] as const;
-
-
+// =======================
+// COMPONENTE
+// =======================
 export default function PaymentCard() {
-  // ---- Estado base
-  const [provider, setProvider] = React.useState<ProviderUi>('Tarjetas de Crédito/Débito');
-  const [terms, setTerms] = React.useState(false);
-  const [currency, setCurrency] = React.useState<Currency>('COP');
-  const [amountRaw, setAmountRaw] = React.useState('');
-  const [concept, setConcept] = React.useState('');
-  const [reference, setReference] = React.useState('');
-  const [senderName, setSenderName] = React.useState('');
-  const [email, setEmail] = React.useState('');
-  const [phone, setPhone] = React.useState('');
-  const [companyName, setCompanyName] = React.useState('');
+  // Base
+  const [provider, setProvider] = React.useState<ProviderUi>('Tarjetas de Crédito/Débito')
+  const [terms, setTerms] = React.useState(false)
+  const [currency, setCurrency] = React.useState<Currency>('COP')
+  const [amountRaw, setAmountRaw] = React.useState('')
 
-  // ---- Tarjeta
-  const [cardNumber, setCardNumber] = React.useState('');
-  const [cardExpMonth, setCardExpMonth] = React.useState('');
-  const [cardExpYear, setCardExpYear] = React.useState('');
-  const [cardCvc, setCardCvc] = React.useState('');
-  const [cardHolder, setCardHolder] = React.useState('');
+  const [concept, setConcept] = React.useState('')       // description
+  const [reference, setReference] = React.useState('')   // reference
+  const [senderName, setSenderName] = React.useState('') // customer.name
+  const [email, setEmail] = React.useState('')           // customer.email
+  const [phone, setPhone] = React.useState('')           // customer.phone
+  const [companyName, setCompanyName] = React.useState('') // opcional meta
 
-  // ---- PSE
-  const [pseBanks, setPseBanks] = React.useState<PseMethod[]>(PSE_BANKS_FALLBACK);
-  const [pseBank, setPseBank] = React.useState('');
-  const [pseDocType, setPseDocType] = React.useState<(typeof DOC_TYPES)[number] | ''>('');
-  const [pseDocNumber, setPseDocNumber] = React.useState('');
-  const [psePersonType, setPsePersonType] = React.useState<(typeof PERSON_TYPES)[number]>('natural');
+  // Card
+  const [cardNumber, setCardNumber] = React.useState('')
+  const [cardExpMonth, setCardExpMonth] = React.useState('')
+  const [cardExpYear, setCardExpYear] = React.useState('')
+  const [cardCvc, setCardCvc] = React.useState('')
+  const [cardHolder, setCardHolder] = React.useState('')
 
-  // ---- UI
-  const [loading, setLoading] = React.useState(false);
-  const [snack, setSnack] = React.useState<{open: boolean; type: 'success'|'error'|'info'; msg: string}>({open:false, type:'info', msg:''});
+  // PSE
+  const [pseBanks, setPseBanks] = React.useState<PseMethod[]>(PSE_BANKS_FALLBACK)
+  const [pseBank, setPseBank] = React.useState('')
+  const [pseDocType, setPseDocType] = React.useState<(typeof DOC_TYPES)[number] | ''>('')
+  const [pseDocNumber, setPseDocNumber] = React.useState('')
+  const [psePersonType, setPsePersonType] = React.useState<(typeof PERSON_TYPES)[number]>('natural')
 
-  // ---- Derivados
+  const [loading, setLoading] = React.useState(false)
+  const [snack, setSnack] = React.useState<{open: boolean; type: 'success'|'error'|'info'; msg: string}>({open:false, type:'info', msg:''})
+
   const amountNumber = React.useMemo(() => {
-    const n = onlyDigits(amountRaw);
-    return n ? parseInt(n, 10) : 0;
-  }, [amountRaw]);
+    const n = onlyDigits(amountRaw)
+    return n ? parseInt(n, 10) : 0
+  }, [amountRaw])
 
   const paymentMethod: 'card' | 'pse' =
-    provider === 'Tarjetas de Crédito/Débito' ? 'card' : 'pse';
+    provider === 'Tarjetas de Crédito/Débito' ? 'card' : 'pse'
 
-  // ---- Cargar métodos/bancos PSE (si hay endpoint). Si falla, queda el fallback.
   React.useEffect(() => {
     (async () => {
       try {
-        const data: any = await apiGet<any>(CLIENT_GET_PSE_METHODS);
-        // Adapta: soporta distintos shapes comunes
-        let banks: PseMethod[] = [];
+        const data: any = await apiGet<any>(CLIENT_GET_PSE_METHODS)
+        let banks: PseMethod[] = []
         if (Array.isArray(data)) {
           if (typeof data[0] === 'string') {
-            banks = data.map((s: string) => ({ code: s, name: s.replace(/_/g, ' ') }));
+            banks = data.map((s: string) => ({ code: s, name: s.replace(/_/g, ' ') }))
           } else if (data[0]?.code && data[0]?.name) {
-            banks = data as PseMethod[];
+            banks = data as PseMethod[]
           }
         } else if (data?.banks && Array.isArray(data.banks)) {
           banks = data.banks.map((b: any) => ({
             code: b.code || b.id || b.bankCode || b.name,
             name: b.name || b.displayName || b.code,
-          }));
+          }))
         }
-        if (banks.length) {
-          setPseBanks(banks);
-        }
+        if (banks.length) setPseBanks(banks)
       } catch {
-        // Silencioso: deja fallback
+        // silencioso: deja fallback
       }
-    })();
-  }, []);
+    })()
+  }, [])
 
-  // ---- Validaciones
+  // Validaciones
   const baseValid =
     terms &&
     amountNumber > 0 &&
     concept.trim().length > 0 &&
     reference.trim().length > 0 &&
     senderName.trim().length > 0 &&
-    isValidEmail(email);
+    isValidEmail(email)
 
   const cardValid = React.useMemo(() => {
-    if (paymentMethod !== 'card') return true;
-    const num = onlyDigits(cardNumber);
-    const mm = onlyDigits(cardExpMonth);
-    const yy = onlyDigits(cardExpYear);
-    const cvc = onlyDigits(cardCvc);
-    const holderOk = cardHolder.trim().length > 2;
-    const mmNum = Number(mm);
-    const yearOk = yy.length >= 2; // admite '25' o '2025'
+    if (paymentMethod !== 'card') return true
+    const num = onlyDigits(cardNumber)
+    const mm = onlyDigits(cardExpMonth)
+    const yy = onlyDigits(cardExpYear)
+    const cvc = onlyDigits(cardCvc)
+    const holderOk = cardHolder.trim().length > 2
+    const mmNum = Number(mm)
+    const yearOk = yy.length >= 2 // admite '25' o '2025'
     return (
       num.length >= 13 && num.length <= 19 &&
       mm.length >= 1 && mmNum >= 1 && mmNum <= 12 &&
       yearOk &&
       (cvc.length === 3 || cvc.length === 4) &&
       holderOk
-    );
-  }, [paymentMethod, cardNumber, cardExpMonth, cardExpYear, cardCvc, cardHolder]);
+    )
+  }, [paymentMethod, cardNumber, cardExpMonth, cardExpYear, cardCvc, cardHolder])
 
   const pseValid = React.useMemo(() => {
-    if (paymentMethod !== 'pse') return true;
+    if (paymentMethod !== 'pse') return true
     return (
       pseBank.trim().length > 0 &&
       pseDocType !== '' &&
       onlyDigits(pseDocNumber).length >= 6 &&
       (psePersonType === 'natural' || psePersonType === 'juridica')
-    );
-  }, [paymentMethod, pseBank, pseDocType, pseDocNumber, psePersonType]);
+    )
+  }, [paymentMethod, pseBank, pseDocType, pseDocNumber, psePersonType])
 
-  const canSubmit = baseValid && cardValid && pseValid && !loading;
+  const canSubmit = baseValid && cardValid && pseValid && !loading
 
-  // ---- Handlers
-  const handleAmountChange = (val: string) => setAmountRaw(onlyDigits(val));
-  const handleCardNumberChange = (v: string) => setCardNumber(onlyDigits(v).slice(0, 19));
-  const handleCardExpMonthChange = (v: string) => setCardExpMonth(onlyDigits(v).slice(0, 2));
-  const handleCardExpYearChange = (v: string) => setCardExpYear(onlyDigits(v).slice(0, 4));
-  const handleCardCvcChange = (v: string) => setCardCvc(onlyDigits(v).slice(0, 4));
+  // Handlers
+  const handleAmountChange = (val: string) => setAmountRaw(onlyDigits(val))
+  const handleCardNumberChange = (v: string) => setCardNumber(onlyDigits(v).slice(0, 19))
+  const handleCardExpMonthChange = (v: string) => setCardExpMonth(onlyDigits(v).slice(0, 2))
+  const handleCardExpYearChange = (v: string) => setCardExpYear(onlyDigits(v).slice(0, 4))
+  const handleCardCvcChange = (v: string) => setCardCvc(onlyDigits(v).slice(0, 4))
 
-  // ---- Submit
+  // Submit
   const handlePay = async () => {
     if (!canSubmit) {
-      const reasons = [];
-      if (!terms) reasons.push('Aceptar términos');
-      if (!(amountNumber > 0)) reasons.push('Monto válido');
-      if (!concept.trim()) reasons.push('Descripción');
-      if (!reference.trim()) reasons.push('Referencia');
-      if (!senderName.trim()) reasons.push('Nombre del cliente');
-      if (!isValidEmail(email)) reasons.push('Email válido');
-      if (paymentMethod === 'card' && !cardValid) reasons.push('Campos de tarjeta válidos');
-      if (paymentMethod === 'pse' && !pseValid) reasons.push('Campos PSE válidos');
-      setSnack({ open: true, type: 'error', msg: `Faltan/Inválidos: ${reasons.join(' • ')}` });
-      return;
+      const reasons: string[] = []
+      if (!terms) reasons.push('Aceptar términos')
+      if (!(amountNumber > 0)) reasons.push('Monto válido')
+      if (!concept.trim()) reasons.push('Descripción')
+      if (!reference.trim()) reasons.push('Referencia')
+      if (!senderName.trim()) reasons.push('Nombre del cliente')
+      if (!isValidEmail(email)) reasons.push('Email válido')
+      if (paymentMethod === 'card' && !cardValid) reasons.push('Campos de tarjeta válidos')
+      if (paymentMethod === 'pse' && !pseValid) reasons.push('Campos PSE válidos')
+      setSnack({ open: true, type: 'error', msg: `Faltan/Inválidos: ${reasons.join(' • ')}` })
+      return
     }
 
-    setLoading(true);
+    setLoading(true)
     try {
-      const basePayload = {
-        paymentMethod,                  // "card" | "pse"
-        amount: amountNumber,           // si tu backend usa centavos: amountNumber * 100
+      const basePayload: any = {
+        paymentMethod,                // 'card' | 'pse'
+        amount: amountNumber,         // si backend usa centavos: amountNumber * 100
         currency,
         description: concept.trim(),
         reference: reference.trim(),
@@ -233,14 +246,14 @@ export default function PaymentCard() {
           email: email.trim(),
           phone: phone.trim(),
         },
-        // Alias top-level por compatibilidad con validadores previos:
+        // alias top-level por compatibilidad con validadores previos
         customerName: senderName.trim(),
         customerEmail: email.trim(),
         meta: {
           companyName: companyName.trim() || undefined,
           uiProvider: provider,
         },
-      };
+      }
 
       const payload =
         paymentMethod === 'card'
@@ -262,41 +275,53 @@ export default function PaymentCard() {
                 documentNumber: pseDocNumber,
                 personType: psePersonType,
               },
-            };
+            }
 
-      // (Debug seguro) en dev enmascara tarjeta:
+      // debug seguro en dev (mask)
       if (process.env.NODE_ENV !== 'production') {
-        const clone = JSON.parse(JSON.stringify(payload));
-        if (clone.card) { clone.card.number = '****'; clone.card.cvc = '***'; }
-        console.log('PAYMENT PAYLOAD →', clone);
+        const clone = JSON.parse(JSON.stringify(payload))
+        if (clone.card) { clone.card.number = '****'; clone.card.cvc = '***' }
+        console.log('PAYMENT PAYLOAD →', clone)
       }
 
-      const resp = await apiPost<PaymentResponse>(CLIENT_CREATE_PAYMENT, payload);
+      const resp = await apiPost<PaymentResponse>(CLIENT_CREATE_PAYMENT, payload)
 
       if (resp?.success === false || resp?.status === 'failed') {
         const msg = resp?.errors?.length
           ? resp.errors.map(e => e.message).join(' • ')
-          : (resp?.message || 'No se pudo crear el pago');
-        throw new Error(msg);
+          : (resp?.message || 'No se pudo crear el pago')
+        throw new Error(msg)
       }
 
-      if (resp.redirectUrl) {
-        setSnack({ open: true, type: 'success', msg: 'Redirigiendo a la pasarela de pago…' });
-        window.location.href = resp.redirectUrl;
-        return;
+      const checkoutUrl = resp.checkoutUrl || resp.paymentUrl || resp.redirectUrl
+
+      if (paymentMethod === 'pse') {
+        if (checkoutUrl) {
+          if (resp.transactionId) sessionStorage.setItem('lastTxId', resp.transactionId)
+          window.location.href = checkoutUrl
+          return
+        } else {
+          throw new Error('La pasarela PSE no retornó un checkoutUrl.')
+        }
       }
 
-      setSnack({ open: true, type: 'success', msg: 'Pago creado. Sigue las instrucciones de la pasarela.' });
+      // Tarjeta: generalmente en el mismo formulario, pero si llega URL, la dejamos opcional.
+      if (checkoutUrl) {
+        console.log('Se recibió un checkoutUrl para tarjeta (opcional):', checkoutUrl)
+        // window.location.href = checkoutUrl // si quisieras redirigir también con tarjeta
+      }
+
+      setSnack({ open: true, type: 'success', msg: resp.message || 'Pago creado. Sigue las instrucciones.' })
     } catch (e: any) {
-      setSnack({ open: true, type: 'error', msg: e.message || 'Error al procesar el pago' });
+      setSnack({ open: true, type: 'error', msg: e.message || 'Error al procesar el pago' })
     } finally {
-      setLoading(false);
+      setLoading(false)
     }
-  };
+  }
 
   return (
     <>
-      {/* Logo (si esta vista solo procesa, puedes quitarlo si quieres todavía más minimal) */}
+      {/* Logo */}
       <Box
         component="img"
         src="/crosspay-solutions-logo-color.svg"
@@ -413,10 +438,17 @@ export default function PaymentCard() {
             <TextField fullWidth value={phone} onChange={(e) => setPhone(e.target.value)} placeholder="+573001234567" type="tel" />
           </Box>
 
-          {/* ===== Inputs condicionales por método ===== */}
+          {/* Empresa (opcional) */}
+          <Box>
+            <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre de la empresa (opcional)</Typography>
+            <TextField fullWidth value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Crosspay Solutions" />
+          </Box>
+
+          {/* ===== Inputs condicionales ===== */}
           {paymentMethod === 'card' && (
             <Box>
               <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>Datos de la tarjeta</Typography>
+
               <Stack spacing={1.2}>
                 <TextField
                   fullWidth
@@ -463,6 +495,7 @@ export default function PaymentCard() {
           {paymentMethod === 'pse' && (
             <Box>
               <Typography variant="subtitle2" sx={{ mt: 1, mb: 1 }}>Datos PSE</Typography>
+
               <Stack spacing={1.2}>
                 <FormControl fullWidth>
                   <Select
@@ -508,7 +541,7 @@ export default function PaymentCard() {
           )}
 
           {/* Términos */}
-          <Box sx={{ display: "flex", justifyContent: "center", alignItems: "center", textAlign: "center", pl: 3 }}>
+          <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center', pl: 3 }}>
             <label style={{ display: 'flex', alignItems: 'center', gap: 6, cursor: 'pointer' }}>
               <input
                 type="checkbox"
@@ -516,14 +549,14 @@ export default function PaymentCard() {
                 onChange={(e) => setTerms(e.target.checked)}
                 style={{ marginRight: 8 }}
               />
-              <Typography variant="body2" sx={{ fontSize: "0.8rem" }}>
+              <Typography variant="body2" sx={{ fontSize: '0.8rem' }}>
                 Acepto los{' '}
                 <Box
                   component="a"
                   href="https://crosspaysolutions.com/terms-and-conditions"
                   target="_blank"
                   rel="noopener noreferrer"
-                  sx={{ textDecoration: "underline", color: "pink.main", "&:hover": { color: "btn1.main" } }}
+                  sx={{ textDecoration: 'underline', color: 'pink.main', '&:hover': { color: 'btn1.main' } }}
                 >
                   Términos y Condiciones
                 </Box>{' '}del servicio.
@@ -577,10 +610,10 @@ export default function PaymentCard() {
       <Snackbar
         open={snack.open}
         autoHideDuration={7000}
-        onClose={() => setSnack(s => ({...s, open:false}))}
+        onClose={() => setSnack(s => ({ ...s, open: false }))}
         anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
       >
-        <Alert severity={snack.type} onClose={() => setSnack(s => ({...s, open:false}))} variant="filled">
+        <Alert severity={snack.type} onClose={() => setSnack(s => ({ ...s, open: false }))} variant="filled">
           {snack.msg}
         </Alert>
       </Snackbar>
