@@ -326,11 +326,13 @@ export default function PaymentCard() {
         component="img"
         src="/crosspay-solutions-logo-color.svg"
         alt="Crosspay Solutions"
-        sx={{ width: 160, display: 'block', mx: 'auto', mb: 2 }}
+        sx={{ width: 160, display: 'block', mx: 'auto', mt:4, mb: 4 }}
       />
 
+      {/* Contenedor de las transacciones */}
       <Paper elevation={0} sx={{ p: { xs: 2.5, sm: 3 }, width: 520, maxWidth: '100%', mx: 'auto' }}>
-        <Stack spacing={2}>
+        <Stack spacing={3}>
+
           {/* Encabezado */}
           <Box textAlign="center">
             <Typography variant="h5" fontWeight={800} mb={1}>
@@ -398,22 +400,6 @@ export default function PaymentCard() {
             <TextField fullWidth value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ej: FACT-2025-00123" />
           </Box>
 
-          {/* Proveedor (solo PSE y Tarjeta) */}
-          <Box>
-            <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Proveedor de pago</Typography>
-            <FormControl fullWidth>
-              <Select
-                value={provider}
-                onChange={(e) => setProvider(e.target.value as ProviderUi)}
-                IconComponent={ExpandMoreRoundedIcon}
-                sx={{ '& .MuiSelect-select': { p: '0.75rem 1rem' } }}
-              >
-                <MenuItem value="Pagos PSE">Pagos PSE</MenuItem>
-                <MenuItem value="Tarjetas de Crédito/Débito">Tarjetas de Crédito/Débito</MenuItem>
-              </Select>
-            </FormControl>
-          </Box>
-
           {/* Datos del cliente */}
           <Box>
             <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre del cliente</Typography>
@@ -442,6 +428,23 @@ export default function PaymentCard() {
           <Box>
             <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre de la empresa (opcional)</Typography>
             <TextField fullWidth value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Crosspay Solutions" />
+          </Box>
+
+          
+          {/* Proveedor (solo PSE y Tarjeta) */}
+          <Box>
+            <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Proveedor de pago</Typography>
+            <FormControl fullWidth>
+              <Select
+                value={provider}
+                onChange={(e) => setProvider(e.target.value as ProviderUi)}
+                IconComponent={ExpandMoreRoundedIcon}
+                sx={{ '& .MuiSelect-select': { p: '0.75rem 1rem' } }}
+              >
+                <MenuItem value="Pagos PSE">Pagos PSE</MenuItem>
+                <MenuItem value="Tarjetas de Crédito/Débito">Tarjetas de Crédito/Débito</MenuItem>
+              </Select>
+            </FormControl>
           </Box>
 
           {/* ===== Inputs condicionales ===== */}
