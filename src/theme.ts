@@ -7,6 +7,7 @@ export const COLORS = {
   btn2: '#E937B1',
   btn3: '#E6E6E6',
   textTitle: '#1E1A30',
+  placeHolder: '#7f7f7fff',
   textParagraph: '#5E5E5E',
   chevron: '#999999',
   shadow: 'rgba(30, 26, 48, 0.1)',
@@ -16,7 +17,7 @@ export const COLORS = {
   border2: '#cacacaff',
   text: '#1E1A30',
   paragraph: '#5E5E5E',
-  label: '#a8a8a8ff',
+  label: '#454545ff',
 }
 
 
