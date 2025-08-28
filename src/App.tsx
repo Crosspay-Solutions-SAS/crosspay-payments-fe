@@ -14,8 +14,6 @@ import Dashboard from './pages/Dashboard'
 import Cuenta from './pages/Account'
 import Configuracion from './pages/Settings'
 
-const getAuthToken = () =>
-  localStorage.getItem('adminToken') || localStorage.getItem('token') || ''
 
 export default function App() {
   // soportar ?token=... una vez
@@ -26,8 +24,6 @@ export default function App() {
       localStorage.setItem('token', t)
     }
   }, [])
-
-  const token = getAuthToken()
 
   return (
     <ThemeProvider theme={theme}>

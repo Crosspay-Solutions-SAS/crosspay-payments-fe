@@ -11,7 +11,7 @@ import {
 // CONFIG/API
 // =======================
 // Normalizo BASE para evitar doble slash en fetch
-const API_BASE_URL = 'https://9d0921671656.ngrok-free.app/'
+const API_BASE_URL = 'https://a10af95af324.ngrok-free.app/'
 const CLIENT_CREATE_PAYMENT = '/client/payment'
 const CLIENT_GET_PSE_METHODS = '/client/pse-methods'
 
@@ -68,7 +68,7 @@ async function apiGet<T>(path: string, init?: RequestInit): Promise<T> {
 // =======================
 // TIPOS
 // =======================
-type Currency = 'COP' | 'MXN' | 'ARS'
+type Currency = 'COP' | 'MXN' | 'ARS' | 'USD'
 type ProviderUi = 'Pagos PSE' | 'Tarjetas de Crédito/Débito'
 
 type PaymentResponse = {
@@ -105,6 +105,45 @@ const PSE_BANKS_FALLBACK: PseMethod[] = [
 const DOC_TYPES = ['CC', 'CE', 'NIT', 'TI', 'PP'] as const
 const PERSON_TYPES = ['natural', 'juridica'] as const
 
+// ---- Formateo de miles configurable
+const formatThousands = (s: string, sep: '.' | ',') => {
+  if (!s) return ''
+  return s.replace(/\B(?=(\d{3})+(?!\d))/g, sep)
+}
+
+// ---- Normaliza año YY/ YYYY -> YYYY
+const normalizeYear = (yy: string) => {
+  const y = yy.trim()
+  if (!y) return NaN
+  if (/^\d{2}$/.test(y)) return 2000 + Number(y) // 25 -> 2025
+  if (/^\d{4}$/.test(y)) return Number(y)
+  return NaN
+}
+
+// ---- Validación de expiración MM/YY
+const validateExpiry = (mmStr: string, yyStr: string) => {
+  const mm = Number(mmStr)
+  const yy = normalizeYear(yyStr)
+
+  const monthValid = /^\d{1,2}$/.test(mmStr) && mm >= 1 && mm <= 12
+  const yearValid =
+    ((/^\d{2}$/.test(yyStr) || /^\d{4}$/.test(yyStr)) && !Number.isNaN(yy)) &&
+    yy >= 2000 &&
+    yy <= (new Date().getFullYear() + 30)
+
+  if (!monthValid || !yearValid) {
+    return { valid: false, reason: 'format' as const }
+  }
+
+  // no vencida (comparando contra mes actual)
+  const now = new Date()
+  const yNow = now.getFullYear()
+  const mNow = now.getMonth() + 1 // 1..12
+  const notExpired = yy > yNow || (yy === yNow && mm >= mNow)
+
+  return { valid: notExpired, reason: notExpired ? null : 'expired' as const }
+}
+
 // =======================
 // COMPONENTE
 // =======================
@@ -132,7 +171,7 @@ export default function PaymentCard() {
   // PSE
   const [pseBanks, setPseBanks] = React.useState<PseMethod[]>(PSE_BANKS_FALLBACK)
   const [pseBank, setPseBank] = React.useState('')
-  const [pseDocType, setPseDocType] = React.useState<(typeof DOC_TYPES)[number]>('CC') /* VERIFICAR ESTE CAMBIO */
+  const [pseDocType, setPseDocType] = React.useState<(typeof DOC_TYPES)[number]>('CC')
   const [pseDocNumber, setPseDocNumber] = React.useState('')
   const [psePersonType, setPsePersonType] = React.useState<(typeof PERSON_TYPES)[number]>('natural')
 
@@ -171,6 +210,14 @@ export default function PaymentCard() {
     })()
   }, [])
 
+  // Validación expiración (derivados)
+  const expCheck = React.useMemo(
+    () => validateExpiry(onlyDigits(cardExpMonth), onlyDigits(cardExpYear)),
+    [cardExpMonth, cardExpYear]
+  )
+  const expFormatError = (cardExpMonth || cardExpYear) && expCheck.reason === 'format' && !expCheck.valid
+  const expExpiredError = expCheck.reason === 'expired' && !expCheck.valid
+
   // Validaciones
   const baseValid =
     terms &&
@@ -183,20 +230,13 @@ export default function PaymentCard() {
   const cardValid = React.useMemo(() => {
     if (paymentMethod !== 'card') return true
     const num = onlyDigits(cardNumber)
-    const mm = onlyDigits(cardExpMonth)
-    const yy = onlyDigits(cardExpYear)
     const cvc = onlyDigits(cardCvc)
     const holderOk = cardHolder.trim().length > 2
-    const mmNum = Number(mm)
-    const yearOk = yy.length >= 2 // admite '25' o '2025'
-    return (
-      num.length >= 13 && num.length <= 19 &&
-      mm.length >= 1 && mmNum >= 1 && mmNum <= 12 &&
-      yearOk &&
-      (cvc.length === 3 || cvc.length === 4) &&
-      holderOk
-    )
-  }, [paymentMethod, cardNumber, cardExpMonth, cardExpYear, cardCvc, cardHolder])
+    const panOk = num.length >= 13 && num.length <= 19
+    const cvcOk = cvc.length === 3 || cvc.length === 4
+    const expOk = expCheck.valid
+    return panOk && cvcOk && holderOk && expOk
+  }, [paymentMethod, cardNumber, cardCvc, cardHolder, expCheck])
 
   const pseValid = React.useMemo(() => {
     if (paymentMethod !== 'pse') return true
@@ -384,12 +424,18 @@ export default function PaymentCard() {
                       <MenuItem value="COP">COP</MenuItem>
                       <MenuItem value="MXN">MXN</MenuItem>
                       <MenuItem value="ARS">ARS</MenuItem>
+                      <MenuItem value="USD">USD</MenuItem>
                     </Select>
                   </FormControl>
 
                   <TextField
                     fullWidth
-                    value={amountRaw}
+                    value={
+                      // COP/MXN/ARS -> comas; USD -> puntos
+                      currency === 'USD'
+                        ? formatThousands(amountRaw, '.')
+                        : formatThousands(amountRaw, ',')
+                    }
                     onChange={(e) => handleAmountChange(e.target.value)}
                     placeholder="0"
                     inputProps={{ inputMode: 'numeric', maxLength: 10 }}
@@ -541,6 +587,12 @@ export default function PaymentCard() {
                           onChange={(e) => handleCardExpMonthChange(e.target.value)}
                           inputProps={{ inputMode: 'numeric', maxLength: 2 }}
                           placeholder="MM"
+                          error={Boolean(expFormatError || expExpiredError)}
+                          helperText={
+                            expFormatError ? 'Mes 01–12. Año YY o YYYY.' :
+                            expExpiredError ? 'La tarjeta está vencida.' :
+                            ''
+                          }
                           sx={{
                             '& .MuiInputBase-root': {
                               color: COLORS.placeHolder,
@@ -560,7 +612,13 @@ export default function PaymentCard() {
                           onChange={(e) => handleCardExpYearChange(e.target.value)}
                           fullWidth
                           inputProps={{ inputMode: 'numeric', maxLength: 4 }}
-                          placeholder='YYYY'
+                          placeholder='YY o YYYY'
+                          error={Boolean(expFormatError || expExpiredError)}
+                          helperText={
+                            expFormatError ? 'Usa 2 o 4 dígitos (20YY).' :
+                            expExpiredError ? 'La tarjeta está vencida.' :
+                            ''
+                          }
                           sx={{
                             '& .MuiInputBase-root': {
                               color: COLORS.placeHolder,
@@ -653,10 +711,8 @@ export default function PaymentCard() {
                           placeholder="1000123456"
                           sx={{
                             '& input': {
-                              fontSize: '',
                               p: '0.6rem 1rem',
                             },
-
                           }}
                         />
                       </FormControl>

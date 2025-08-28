@@ -11,12 +11,41 @@ import {
   Switch,
 } from '@mui/material'
 import VisibilityOffRoundedIcon from '@mui/icons-material/VisibilityOffRounded'
+import VisibilityRoundedIcon from '@mui/icons-material/VisibilityRounded'
 import CheckRoundedIcon from '@mui/icons-material/CheckRounded'
 import Sidebar from '../components/sidebar'
 import { COLORS } from '../theme'
 
 export default function Cuenta() {
   const [showPwd, setShowPwd] = React.useState(false)
+  const [email, setEmail] = React.useState('minombre@crosspaysolutions.com')
+  const [password, setPassword] = React.useState('2@_%kJi/*.#eC5%leWQ5S8$')
+  const [twoFA, setTwoFA] = React.useState(false)
+
+  const isEmailValid = React.useMemo(
+    () => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email.trim()),
+    [email]
+  )
+  const isComplete = React.useMemo(
+    () => isEmailValid && password.trim().length > 0,
+    [isEmailValid, password]
+  )
+
+  const endIcon = (
+    <Box
+      sx={{
+        width: 22,
+        height: 22,
+        borderRadius: '50%',
+        bgcolor: isComplete ? '#fff' : '#111',
+        color: isComplete ? '#6B2BFF' : '#fff',
+        display: 'grid',
+        placeItems: 'center',
+      }}
+    >
+      <CheckRoundedIcon sx={{ fontSize: 16 }} />
+    </Box>
+  )
 
   return (
     <Box sx={{ display: 'flex', bgcolor: COLORS.bgMain, p: 0, minHeight: '100vh' }}>
@@ -41,12 +70,7 @@ export default function Cuenta() {
             {/* Nombre de usuario (deshabilitado) */}
             <Box>
               <Typography sx={{ mb: 0.75, fontWeight: 600 }}>Nombre de usuario</Typography>
-              <TextField
-                fullWidth
-                size="medium"
-                value="William Cárdenas Bohórquez"
-                disabled
-              />
+              <TextField fullWidth size="medium" value="William Cárdenas Bohórquez" disabled />
             </Box>
 
             {/* Email de recuperación */}
@@ -55,24 +79,32 @@ export default function Cuenta() {
               <TextField
                 fullWidth
                 size="medium"
-                defaultValue="minombre@crosspaysolutions.com"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
                 placeholder="correo@dominio.com"
+                error={email.length > 0 && !isEmailValid}
+                helperText={email.length > 0 && !isEmailValid ? 'Correo electrónico inválido' : ' '}
               />
             </Box>
 
-            {/* Contraseña con ícono para mostrar/ocultar (solo UI) */}
+            {/* Contraseña con ícono para mostrar/ocultar */}
             <Box>
               <Typography sx={{ mb: 0.75, fontWeight: 600 }}>Contraseña</Typography>
               <TextField
                 fullWidth
                 size="medium"
                 type={showPwd ? 'text' : 'password'}
-                defaultValue="2@_%kJi/*.#eC5%leWQ5S8$"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
-                      <IconButton edge="end" tabIndex={-1}>
-                        <VisibilityOffRoundedIcon />
+                      <IconButton
+                        edge="end"
+                        onClick={() => setShowPwd((s) => !s)}
+                        onMouseDown={(e) => e.preventDefault()}
+                      >
+                        {showPwd ? <VisibilityRoundedIcon /> : <VisibilityOffRoundedIcon />}
                       </IconButton>
                     </InputAdornment>
                   ),
@@ -91,76 +123,47 @@ export default function Cuenta() {
                 InputProps={{
                   endAdornment: (
                     <InputAdornment position="end">
-                      <Switch size="small" />
+                      <Switch
+                        size="small"
+                        checked={twoFA}
+                        onChange={(e) => setTwoFA(e.target.checked)}
+                      />
                     </InputAdornment>
                   ),
                 }}
               />
             </Box>
 
-            {/* Botones (solo UI) */}
+            {/* Botón Guardar (gris si incompleto, gradiente si completo) */}
             <Stack direction="row" spacing={2} sx={{ pt: 1 }}>
-              {/* Botón gris con check (ghost) */}
-              <Button
-                variant="contained"
-                disableElevation
-                sx={{
-                  bgcolor: '#ECECEC',
-                  color: '#111',
-                  borderRadius: 999,
-                  px: 2,
-                  '&:hover': { bgcolor: '#E3E3E3' },
-                  gap: 1,
-                }}
-                endIcon={
-                  <Box
-                    sx={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: '50%',
-                      bgcolor: '#111',
-                      color: '#fff',
-                      display: 'grid',
-                      placeItems: 'center',
-                    }}
-                  >
-                    <CheckRoundedIcon sx={{ fontSize: 16 }} />
-                  </Box>
-                }
-              >
-                Guardar Selección
-              </Button>
-
-              {/* Botón morado degradado con check */}
               <Button
                 variant="contained"
                 disableElevation
                 sx={{
                   borderRadius: 999,
                   px: 2,
-                  background:
-                    'linear-gradient(90deg, #5036F6 0%, #E937B1 100%)',
-                  '&:hover': {
-                    background:
-                      'linear-gradient(90deg, #4b30ee 0%, #e02ea9 100%)',
-                  },
                   gap: 1,
+                  ...(isComplete
+                    ? {
+                        color: '#fff',
+                        background: 'linear-gradient(90deg, #5036F6 0%, #E937B1 100%)',
+                        '&:hover': {
+                          background:
+                            'linear-gradient(90deg, #4b30ee 0%, #e02ea9 100%)',
+                        },
+                      }
+                    : {
+                        bgcolor: '#ECECEC',
+                        color: '#111',
+                        '&:hover': { bgcolor: '#E3E3E3' },
+                      }),
                 }}
-                endIcon={
-                  <Box
-                    sx={{
-                      width: 22,
-                      height: 22,
-                      borderRadius: '50%',
-                      bgcolor: '#fff',
-                      color: '#6B2BFF',
-                      display: 'grid',
-                      placeItems: 'center',
-                    }}
-                  >
-                    <CheckRoundedIcon sx={{ fontSize: 16 }} />
-                  </Box>
-                }
+                endIcon={endIcon}
+                onClick={() => {
+                  if (!isComplete) return
+                  // TODO: lógica de guardado (API/mutación)
+                  // console.log({ email, password, twoFA })
+                }}
               >
                 Guardar Selección
               </Button>

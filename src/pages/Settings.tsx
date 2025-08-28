@@ -13,28 +13,50 @@ import CheckRoundedIcon from '@mui/icons-material/CheckRounded'
 import Sidebar from '../components/sidebar'
 import { COLORS } from '../theme'
 
+type Provider = 'Vita Wallet' | 'OnePay'
+type CurrencyCode = 'COP' | 'MXN' | 'CLP' | 'ARS' | 'USD'
+
 type CurrencyRow = {
   label: string
-  code: 'COP' | 'MXN' | 'CLP' | 'ARS' | 'USD'
-  provider: 'Vita Wallet' | 'OnePay'
+  code: CurrencyCode
+  provider: Provider
 }
 
 const initialRows: CurrencyRow[] = [
   { label: 'Peso Colombiano', code: 'COP', provider: 'Vita Wallet' },
-  { label: 'Peso Mexicano',  code: 'MXN', provider: 'Vita Wallet' },
-  { label: 'Peso Chileno',   code: 'CLP', provider: 'OnePay' },
+  { label: 'Peso Mexicano', code: 'MXN', provider: 'Vita Wallet' },
+  { label: 'Peso Chileno', code: 'CLP', provider: 'OnePay' },
   { label: 'Peso Argentino', code: 'ARS', provider: 'Vita Wallet' },
-  { label: 'Dólar Americano',code: 'USD', provider: 'OnePay' },
+  { label: 'Dólar Americano', code: 'USD', provider: 'OnePay' },
 ]
 
 export default function Configuracion() {
   const [rows, setRows] = React.useState<CurrencyRow[]>(initialRows)
 
-  const handleChange = (idx: number, value: CurrencyRow['provider']) => {
+  const handleChange = (idx: number, value: Provider) => {
     const copy = [...rows]
     copy[idx] = { ...copy[idx], provider: value }
     setRows(copy)
   }
+
+  // ✅ Todos los campos completos si cada fila tiene un provider seleccionado
+  const isComplete = React.useMemo(() => rows.every(r => Boolean(r.provider)), [rows])
+
+  const endIcon = (
+    <Box
+      sx={{
+        width: 22,
+        height: 22,
+        borderRadius: '50%',
+        bgcolor: isComplete ? '#fff' : '#111',
+        color: isComplete ? '#6B2BFF' : '#fff',
+        display: 'grid',
+        placeItems: 'center',
+      }}
+    >
+      <CheckRoundedIcon sx={{ fontSize: 16 }} />
+    </Box>
+  )
 
   return (
     <Box sx={{ display: 'flex', bgcolor: COLORS.bgMain, minHeight: '100vh' }}>
@@ -101,7 +123,7 @@ export default function Configuracion() {
                   fullWidth
                   size="small"
                   value={r.provider}
-                  onChange={(e) => handleChange(idx, e.target.value as CurrencyRow['provider'])}
+                  onChange={(e) => handleChange(idx, e.target.value as Provider)}
                   sx={{
                     flex: 1,
                     bgcolor: '#F4F4F6',
@@ -116,69 +138,35 @@ export default function Configuracion() {
             ))}
           </Stack>
 
-          {/* Botones */}
+          {/* Botón Guardar (gris si incompleto, gradiente si completo) */}
           <Stack direction="row" spacing={2} sx={{ pt: 3 }}>
-            {/* Botón gris con check */}
-            <Button
-              variant="contained"
-              disableElevation
-              sx={{
-                bgcolor: '#ECECEC',
-                color: '#111',
-                borderRadius: 999,
-                px: 2,
-                '&:hover': { bgcolor: '#E3E3E3' },
-                gap: 1,
-              }}
-              endIcon={
-                <Box
-                  sx={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: '50%',
-                    bgcolor: '#111',
-                    color: '#fff',
-                    display: 'grid',
-                    placeItems: 'center',
-                  }}
-                >
-                  <CheckRoundedIcon sx={{ fontSize: 16 }} />
-                </Box>
-              }
-              onClick={() => {}}
-            >
-              Guardar Selección
-            </Button>
-
-            {/* Botón morado degradado con check */}
             <Button
               variant="contained"
               disableElevation
               sx={{
                 borderRadius: 999,
                 px: 2,
-                background: 'linear-gradient(90deg, #5036F6 0%, #E937B1 100%)',
-                '&:hover': {
-                  background: 'linear-gradient(90deg, #4b30ee 0%, #e02ea9 100%)',
-                },
                 gap: 1,
+                ...(isComplete
+                  ? {
+                      color: '#fff',
+                      background: 'linear-gradient(90deg, #5036F6 0%, #E937B1 100%)',
+                      '&:hover': {
+                        background: 'linear-gradient(90deg, #4b30ee 0%, #e02ea9 100%)',
+                      },
+                    }
+                  : {
+                      bgcolor: '#ECECEC',
+                      color: '#111',
+                      '&:hover': { bgcolor: '#E3E3E3' },
+                    }),
               }}
-              endIcon={
-                <Box
-                  sx={{
-                    width: 22,
-                    height: 22,
-                    borderRadius: '50%',
-                    bgcolor: '#fff',
-                    color: '#6B2BFF',
-                    display: 'grid',
-                    placeItems: 'center',
-                  }}
-                >
-                  <CheckRoundedIcon sx={{ fontSize: 16 }} />
-                </Box>
-              }
-              onClick={() => {}}
+              endIcon={endIcon}
+              onClick={() => {
+                if (!isComplete) return
+                // TODO: aquí va la lógica de guardado (llamado a API/mutación)
+                // console.log('Guardar selección', rows)
+              }}
             >
               Guardar Selección
             </Button>

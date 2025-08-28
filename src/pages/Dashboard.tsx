@@ -10,7 +10,7 @@ import * as React from 'react'
 // =======================
 // CONFIG API y AUTH
 // =======================
-const API_BASE_URL = 'https://9d0921671656.ngrok-free.app'
+const API_BASE_URL = 'https://a10af95af324.ngrok-free.app/'
 
 // Endpoints
 const ADMIN_GET_TRANSACTIONS = '/admin/transactions'
