@@ -30,7 +30,7 @@ export default function App() {
       <CssBaseline />
       <Routes>
         {/* Pública */}
-        <Route path="/payment" element={<PaymentCard />} />
+        <Route path="/payments" element={<PaymentCard />} />
 
         {/* Admin directo */}
         <Route path="/admin" element={<Dashboard />} />
@@ -39,7 +39,7 @@ export default function App() {
 
 
         {/* Redirigir raíz directamente a admin */}
-        <Route path="/" element={<Navigate to="/admin" replace />} />
+        <Route path="/" element={<Navigate to="/payments" replace />} />
 
         <Route
           path="*"

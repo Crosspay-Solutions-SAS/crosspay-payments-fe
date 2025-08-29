@@ -1,19 +1,22 @@
 import * as React from 'react'
 import ExpandMoreRoundedIcon from '@mui/icons-material/ExpandMoreRounded'
 import LockRoundedIcon from '@mui/icons-material/LockRounded'
+import CheckRoundedIcon from '@mui/icons-material/CheckRounded'
 import { COLORS } from '../theme'
 import {
-  Box, Paper, Typography, Stack, TextField, Select, MenuItem, FormControl, 
-  Button, Divider, InputAdornment, Snackbar, Alert, CircularProgress
+  Box, Paper, Typography, Stack, TextField, Select, MenuItem, FormControl,
+  Button, Divider, InputAdornment, CircularProgress, Dialog, DialogTitle,
+  DialogContent, Alert, FormHelperText   // <-- agrega esto
 } from '@mui/material'
+import { PSE_BANKS_FALLBACK, type PseMethod } from '../utils/pseCatalog'
 
 // =======================
 // CONFIG/API
 // =======================
-// Normalizo BASE para evitar doble slash en fetch
-const API_BASE_URL = 'https://a10af95af324.ngrok-free.app/'
+const API_BASE_URL = 'https://a5d3a6118946.ngrok-free.app'
 const CLIENT_CREATE_PAYMENT = '/client/payment'
 const CLIENT_GET_PSE_METHODS = '/client/pse-methods'
+const NOTICE_DELAY_MS = 2500 // <-- tiempo que se muestra el modal antes de continuar
 
 const getAuthToken = () => localStorage.getItem('token') || undefined
 const BASE = API_BASE_URL.replace(/\/+$/, '')
@@ -78,14 +81,11 @@ type PaymentResponse = {
   status?: 'created' | 'processing' | 'requires_action' | 'failed' | 'paid' | 'pending'
   message?: string
   gateway?: string
-  // posibles urls de checkout
   checkoutUrl?: string
   paymentUrl?: string
   redirectUrl?: string
   errors?: Array<{ message: string }>
 }
-
-type PseMethod = { code: string; name: string }
 
 // =======================
 // UTILS
@@ -94,53 +94,19 @@ const GRADIENT = `linear-gradient(90deg, ${COLORS.btn1} 0%, ${COLORS.btn2} 100%)
 const onlyDigits = (s: string) => s.replace(/\D/g, '')
 const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 
-// Fallbacks PSE
-const PSE_BANKS_FALLBACK: PseMethod[] = [
-  { code: 'Bancolombia', name: 'Bancolombia' },
-  { code: 'Davivienda', name: 'Davivienda' },
-  { code: 'BBVA', name: 'BBVA' },
-  { code: 'BANCO_DE_BOGOTA', name: 'Banco de Bogotá' },
-  { code: 'BANCO_POPULAR', name: 'Banco Popular' },
-]
 const DOC_TYPES = ['CC', 'CE', 'NIT', 'TI', 'PP'] as const
 const PERSON_TYPES = ['natural', 'juridica'] as const
 
-// ---- Formateo de miles configurable
-const formatThousands = (s: string, sep: '.' | ',') => {
-  if (!s) return ''
-  return s.replace(/\B(?=(\d{3})+(?!\d))/g, sep)
-}
-
-// ---- Normaliza año YY/ YYYY -> YYYY
-const normalizeYear = (yy: string) => {
-  const y = yy.trim()
-  if (!y) return NaN
-  if (/^\d{2}$/.test(y)) return 2000 + Number(y) // 25 -> 2025
-  if (/^\d{4}$/.test(y)) return Number(y)
-  return NaN
-}
-
-// ---- Validación de expiración MM/YY
+const formatThousands = (s: string, sep: '.' | ',') => s ? s.replace(/\B(?=(\d{3})+(?!\d))/g, sep) : ''
+const normalizeYear = (yy: string) => /^\d{2}$/.test(yy) ? 2000 + Number(yy) : (/^\d{4}$/.test(yy) ? Number(yy) : NaN)
 const validateExpiry = (mmStr: string, yyStr: string) => {
   const mm = Number(mmStr)
   const yy = normalizeYear(yyStr)
-
   const monthValid = /^\d{1,2}$/.test(mmStr) && mm >= 1 && mm <= 12
-  const yearValid =
-    ((/^\d{2}$/.test(yyStr) || /^\d{4}$/.test(yyStr)) && !Number.isNaN(yy)) &&
-    yy >= 2000 &&
-    yy <= (new Date().getFullYear() + 30)
-
-  if (!monthValid || !yearValid) {
-    return { valid: false, reason: 'format' as const }
-  }
-
-  // no vencida (comparando contra mes actual)
-  const now = new Date()
-  const yNow = now.getFullYear()
-  const mNow = now.getMonth() + 1 // 1..12
+  const yearValid = ((/^\d{2}$/.test(yyStr) || /^\d{4}$/.test(yyStr)) && !Number.isNaN(yy)) && yy >= 2000 && yy <= (new Date().getFullYear() + 30)
+  if (!monthValid || !yearValid) return { valid: false, reason: 'format' as const }
+  const now = new Date(), yNow = now.getFullYear(), mNow = now.getMonth() + 1
   const notExpired = yy > yNow || (yy === yNow && mm >= mNow)
-
   return { valid: notExpired, reason: notExpired ? null : 'expired' as const }
 }
 
@@ -154,12 +120,12 @@ export default function PaymentCard() {
   const [currency, setCurrency] = React.useState<Currency>('COP')
   const [amountRaw, setAmountRaw] = React.useState('')
 
-  const [concept, setConcept] = React.useState('')       // description
-  const [reference, setReference] = React.useState('')   // reference
-  const [senderName, setSenderName] = React.useState('') // customer.name
-  const [email, setEmail] = React.useState('')           // customer.email
-  const [phone, setPhone] = React.useState('')           // customer.phone
-  const [companyName, setCompanyName] = React.useState('') // opcional meta
+  const [concept, setConcept] = React.useState('')
+  const [reference, setReference] = React.useState('')
+  const [senderName, setSenderName] = React.useState('')
+  const [email, setEmail] = React.useState('')
+  const [phone, setPhone] = React.useState('')
+  const [companyName, setCompanyName] = React.useState('')
 
   // Card
   const [cardNumber, setCardNumber] = React.useState('')
@@ -176,7 +142,19 @@ export default function PaymentCard() {
   const [psePersonType, setPsePersonType] = React.useState<(typeof PERSON_TYPES)[number]>('natural')
 
   const [loading, setLoading] = React.useState(false)
-  const [snack, setSnack] = React.useState<{open: boolean; type: 'success'|'error'|'info'; msg: string}>({open:false, type:'info', msg:''})
+
+  // ===== Modal de aviso =====
+  const timeoutRef = React.useRef<number | null>(null)
+  const [dialog, setDialog] = React.useState<{
+    open: boolean
+    type: 'success' | 'error' | 'info'
+    title: string
+    message: string
+  }>({ open: false, type: 'info', title: '', message: '' })
+
+  React.useEffect(() => {
+    return () => { if (timeoutRef.current) window.clearTimeout(timeoutRef.current) }
+  }, [])
 
   const amountNumber = React.useMemo(() => {
     const n = onlyDigits(amountRaw)
@@ -204,9 +182,7 @@ export default function PaymentCard() {
           }))
         }
         if (banks.length) setPseBanks(banks)
-      } catch {
-        // silencioso: deja fallback
-      }
+      } catch { /* fallback silencioso */ }
     })()
   }, [])
 
@@ -242,7 +218,6 @@ export default function PaymentCard() {
     if (paymentMethod !== 'pse') return true
     return (
       pseBank.trim().length > 0 &&
-      pseDocType !== '' &&
       onlyDigits(pseDocNumber).length >= 6 &&
       (psePersonType === 'natural' || psePersonType === 'juridica')
     )
@@ -250,7 +225,10 @@ export default function PaymentCard() {
 
   const canSubmit = baseValid && cardValid && pseValid && !loading
 
-  // Handlers
+  // Helpers de UI
+  const showNotice = (type: 'success'|'error'|'info', title: string, message: string) =>
+    setDialog({ open: true, type, title, message })
+
   const handleAmountChange = (val: string) => setAmountRaw(onlyDigits(val))
   const handleCardNumberChange = (v: string) => setCardNumber(onlyDigits(v).slice(0, 19))
   const handleCardExpMonthChange = (v: string) => setCardExpMonth(onlyDigits(v).slice(0, 2))
@@ -269,30 +247,23 @@ export default function PaymentCard() {
       if (!isValidEmail(email)) reasons.push('Email válido')
       if (paymentMethod === 'card' && !cardValid) reasons.push('Campos de tarjeta válidos')
       if (paymentMethod === 'pse' && !pseValid) reasons.push('Campos PSE válidos')
-      setSnack({ open: true, type: 'error', msg: `Faltan/Inválidos: ${reasons.join(' • ')}` })
+
+      showNotice('error', 'Revisa los datos', `Faltan/Inválidos: ${reasons.join(' • ')}`)
       return
     }
 
     setLoading(true)
     try {
       const basePayload: any = {
-        paymentMethod,                // 'card' | 'pse'
-        amount: amountNumber,         // si backend usa centavos: amountNumber * 100
+        paymentMethod,
+        amount: amountNumber,
         currency,
         description: concept.trim(),
         reference: reference.trim(),
-        customer: {
-          name: senderName.trim(),
-          email: email.trim(),
-          phone: phone.trim(),
-        },
-        // alias top-level por compatibilidad con validadores previos
+        customer: { name: senderName.trim(), email: email.trim(), phone: phone.trim() },
         customerName: senderName.trim(),
         customerEmail: email.trim(),
-        meta: {
-          companyName: companyName.trim() || undefined,
-          uiProvider: provider,
-        },
+        meta: { companyName: companyName.trim() || undefined, uiProvider: provider },
       }
 
       const payload =
@@ -317,7 +288,6 @@ export default function PaymentCard() {
               },
             }
 
-      // debug seguro en dev (mask)
       if (process.env.NODE_ENV !== 'production') {
         const clone = JSON.parse(JSON.stringify(payload))
         if (clone.card) { clone.card.number = '****'; clone.card.cvc = '***' }
@@ -325,7 +295,6 @@ export default function PaymentCard() {
       }
 
       const resp = await apiPost<PaymentResponse>(CLIENT_CREATE_PAYMENT, payload)
-
       if (resp?.success === false || resp?.status === 'failed') {
         const msg = resp?.errors?.length
           ? resp.errors.map(e => e.message).join(' • ')
@@ -336,487 +305,461 @@ export default function PaymentCard() {
       const checkoutUrl = resp.checkoutUrl || resp.paymentUrl || resp.redirectUrl
 
       if (paymentMethod === 'pse') {
-        if (checkoutUrl) {
-          if (resp.transactionId) sessionStorage.setItem('lastTxId', resp.transactionId)
+        if (!checkoutUrl) throw new Error('La pasarela PSE no retornó un checkoutUrl.')
+        if (resp.transactionId) sessionStorage.setItem('lastTxId', resp.transactionId)
+
+        // Aviso por unos segundos y luego redirige automáticamente
+        setLoading(false)
+        showNotice(
+          'success',
+          'Pago creado',
+          'Serás redirigido a la ventana de pagos PSE para completar el proceso.'
+        )
+        if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+        timeoutRef.current = window.setTimeout(() => {
           window.location.href = checkoutUrl
-          return
-        } else {
-          throw new Error('La pasarela PSE no retornó un checkoutUrl.')
-        }
+        }, NOTICE_DELAY_MS)
+        return
       }
 
-      // Tarjeta: generalmente en el mismo formulario, pero si llega URL, la dejamos opcional.
-      if (checkoutUrl) {
-        console.log('Se recibió un checkoutUrl para tarjeta (opcional):', checkoutUrl)
-        // window.location.href = checkoutUrl // si quisieras redirigir también con tarjeta
-      }
-
-      setSnack({ open: true, type: 'success', msg: resp.message || 'Pago creado. Sigue las instrucciones.' })
-    } catch (e: any) {
-      setSnack({ open: true, type: 'error', msg: e.message || 'Error al procesar el pago' })
-    } finally {
+      // Tarjeta: solo aviso por unos segundos
       setLoading(false)
+      showNotice(
+        'success',
+        'Pago realizado exitosamente',
+        'Por favor revisa tu bandeja de correo electrónico para más detalles de la transferencia.'
+      )
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+      timeoutRef.current = window.setTimeout(() => {
+        setDialog(d => ({ ...d, open: false }))
+      }, NOTICE_DELAY_MS)
+
+    } catch (e: any) {
+      setLoading(false)
+      showNotice('error', 'Error al procesar el pago', e?.message || 'Ocurrió un error inesperado.')
+      // Opcional: autocerrar errores
+      if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
+      timeoutRef.current = window.setTimeout(() => {
+        setDialog(d => ({ ...d, open: false }))
+      }, NOTICE_DELAY_MS)
     }
   }
 
   return (
     <>
-    <Box sx={{
-      display: 'flex',
-      justifyContent: 'center',
-      alignItems: 'center',
-      minHeight: '100vh',
-      mt: { xs: '12%', sm: '5%', md: '0' },
-      mb: { xs: '12%', sm: '5%', md: '0' },
-    }}>
-
-      {/* Contenedor de las transacciones */}
-      <Paper elevation={0} 
-      sx={{ 
-        p: { xs: 2.5, sm: 4 }, 
-        width: 720, 
-        maxWidth: { xs: '90%', sm: '50%', md: '70%' }, 
-        mx: 'auto', 
+      <Box sx={{
+        display: 'flex',
+        justifyContent: 'center',
+        alignItems: 'center',
+        minHeight: '100vh',
+        mt: { xs: '12%', sm: '5%', md: '0' },
+        mb: { xs: '12%', sm: '5%', md: '0' },
       }}>
-        
-        <Stack spacing={2}
-        sx={{
-          display: 'flex',
-          justifyContent: 'center',
-          alignItems: 'center',
-          minHeight: '100px',
-        }}>
-          {/* Logo */}
-          <Box
-            component="img"
-            src="/crosspay-solutions-logo-color.svg"
-            alt="Crosspay Solutions"
-            sx={{ width: 180, display: 'block', mx: 'auto', mt:6, mb: 4 }}
-          />
-          {/* Encabezado */}
-          <Box textAlign="center">
-            <Typography variant="h5" fontWeight={800} mb={1}>
-              Procesamiento de Pagos
-            </Typography>
-            <Typography variant="body2">
-              Completa el formulario para realizar un pago seguro con Crosspay Solutions.
-            </Typography>
-          </Box>
+        <Paper elevation={0}
+          sx={{
+            p: { xs: 2.5, sm: 4 },
+            width: 720,
+            maxWidth: { xs: '90%', sm: '50%', md: '70%' },
+            mx: 'auto',
+          }}>
+          <Stack spacing={2}
+            sx={{
+              display: 'flex',
+              justifyContent: 'center',
+              alignItems: 'center',
+              minHeight: '100px',
+            }}>
+            {/* Logo */}
+            <Box
+              component="img"
+              src="/crosspay-solutions-logo-color.svg"
+              alt="Crosspay Solutions"
+              sx={{ width: 180, display: 'block', mx: 'auto', mt:6, mb: 4 }}
+            />
+            {/* Encabezado */}
+            <Box textAlign="center">
+              <Typography variant="h5" fontWeight={800} mb={1}>
+                Procesamiento de Pagos
+              </Typography>
+              <Typography variant="body2">
+                Completa el formulario para realizar un pago seguro con Crosspay Solutions.
+              </Typography>
+            </Box>
 
-          <Divider />
+            <Divider />
 
-          <Stack sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3, width: '100%' }}>
+            <Stack sx={{ display: 'flex', flexDirection: { xs: 'column', md: 'row' }, gap: 3, width: '100%' }}>
+              {/* Columna 1 */}
+              <Box sx={{ flex: '1' }}>
+                {/* Monto + Divisa */}
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Monto</Typography>
+                  <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
+                    <FormControl sx={{ minWidth: 100 }}>
+                      <Select
+                        value={currency}
+                        onChange={(e) => setCurrency(e.target.value as Currency)}
+                        IconComponent={ExpandMoreRoundedIcon}
+                        sx={{ '& .MuiSelect-select': { p: '0.6rem 1rem' } }}
+                      >
+                        <MenuItem value="COP">COP</MenuItem>
+                        <MenuItem value="MXN">MXN</MenuItem>
+                        <MenuItem value="ARS">ARS</MenuItem>
+                        <MenuItem value="USD">USD</MenuItem>
+                      </Select>
+                    </FormControl>
 
-            {/* Columna 1 */}
-            <Box sx={{ flex: '1' }}>
+                    <TextField
+                      fullWidth
+                      value={currency === 'USD'
+                        ? formatThousands(amountRaw, '.')
+                        : formatThousands(amountRaw, ',')}
+                      onChange={(e) => setAmountRaw(onlyDigits(e.target.value))}
+                      placeholder="0"
+                      inputProps={{ inputMode: 'numeric', maxLength: 10 }}
+                      sx={{
+                        '& .MuiInputAdornment-root.MuiInputAdornment-positionStart': { mr: 0 },
+                        '& input.MuiInputBase-inputAdornedStart': { pl: '5px' },
+                        '& input': {
+                          fontWeight: 600, fontSize: '1.3rem',
+                          color: COLORS.placeHolder, p: '0.4rem 1rem',
+                        },
+                      }}
+                      InputProps={{
+                        startAdornment: (
+                          <InputAdornment position="start">
+                            <Box component="span" sx={{ fontSize: '1.1rem', color: COLORS.chevron, pt: 0.1 }}>
+                              $
+                            </Box>
+                          </InputAdornment>
+                        ),
+                      }}
+                    />
+                  </Stack>
+                </Box>
 
-              {/* Monto + Divisa */}
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Monto</Typography>
-                <Stack direction={{ xs: 'column', sm: 'row' }} spacing={1}>
-                  <FormControl sx={{ minWidth: 100 }}>
+                {/* Descripción + Referencia */}
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Descripción</Typography>
+                  <TextField fullWidth value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Ej: Servicios de consultoría"
+                    sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
+                  />
+                </Box>
+
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Referencia</Typography>
+                  <TextField fullWidth value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ej: FACT-2025-00123"
+                    sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
+                  />
+                </Box>
+
+                {/* Datos del cliente */}
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre del cliente</Typography>
+                  <TextField fullWidth value={senderName} onChange={(e) => setSenderName(e.target.value)} placeholder="Ej: Juan Pérez"
+                    sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
+                  />
+                </Box>
+
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Email del cliente</Typography>
+                  <TextField
+                    fullWidth
+                    value={email}
+                    onChange={(e) => setEmail(e.target.value)}
+                    placeholder="micorreo@midominio.com"
+                    type="email"
+                    error={!!email && !isValidEmail(email)}
+                    helperText={!!email && !isValidEmail(email) ? 'Ingresa un email válido' : ''}
+                    sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
+                  />
+                </Box>
+
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Teléfono</Typography>
+                  <TextField fullWidth value={phone} onChange={(e) => setPhone(e.target.value)} inputProps={{ inputMode: 'numeric', maxLength: 15 }} placeholder="XXX XXXX XXX" type="tel"
+                    sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
+                  />
+                </Box>
+              </Box>
+
+              {/* Columna 2 */}
+              <Box sx={{ flex: '1' }}>
+                {/* Empresa (opcional) */}
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre de la empresa (opcional)</Typography>
+                  <TextField fullWidth value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Mi Empresa S.A.S."
+                    sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
+                  />
+                </Box>
+
+                {/* Proveedor */}
+                <Box sx={{ mb: 1.5 }}>
+                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Proveedor de pago</Typography>
+                  <FormControl fullWidth>
                     <Select
-                      value={currency}
-                      onChange={(e) => setCurrency(e.target.value as Currency)}
+                      value={provider}
+                      onChange={(e) => setProvider(e.target.value as ProviderUi)}
                       IconComponent={ExpandMoreRoundedIcon}
                       sx={{ '& .MuiSelect-select': { p: '0.6rem 1rem' } }}
                     >
-                      <MenuItem value="COP">COP</MenuItem>
-                      <MenuItem value="MXN">MXN</MenuItem>
-                      <MenuItem value="ARS">ARS</MenuItem>
-                      <MenuItem value="USD">USD</MenuItem>
+                      <MenuItem value="Pagos PSE">Pagos PSE</MenuItem>
+                      <MenuItem value="Tarjetas de Crédito/Débito">Tarjetas de Crédito/Débito</MenuItem>
                     </Select>
                   </FormControl>
+                </Box>
 
-                  <TextField
-                    fullWidth
-                    value={
-                      // COP/MXN/ARS -> comas; USD -> puntos
-                      currency === 'USD'
-                        ? formatThousands(amountRaw, '.')
-                        : formatThousands(amountRaw, ',')
-                    }
-                    onChange={(e) => handleAmountChange(e.target.value)}
-                    placeholder="0"
-                    inputProps={{ inputMode: 'numeric', maxLength: 10 }}
-                    sx={{
-                      '& .MuiInputAdornment-root.MuiInputAdornment-positionStart': { mr: 0 },
-                      '& input.MuiInputBase-inputAdornedStart': { pl: '5px' },
-                      '& input': {
-                        fontWeight: 600, fontSize: '1.3rem',
-                        color: COLORS.placeHolder, p: '0.4rem 1rem',
-                      },
-                    }}
-                    InputProps={{
-                      startAdornment: (
-                        <InputAdornment position="start">
-                          <Box component="span" sx={{ fontSize: '1.1rem', color: COLORS.chevron, pt: 0.1 }}>
-                            $
-                          </Box>
-                        </InputAdornment>
-                      ),
-                    }}
-                  />
-                </Stack>
-              </Box>
-
-              {/* Descripción + Referencia */}
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Descripción</Typography>
-                <TextField fullWidth value={concept} onChange={(e) => setConcept(e.target.value)} placeholder="Ej: Servicios de consultoría"
-                  sx={{
-                    '& input': {
-                      color: COLORS.placeHolder, p: '0.6rem 1rem',
-                    },
-                  }}
-                />
-              </Box>
-
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Referencia</Typography>
-                <TextField fullWidth value={reference} onChange={(e) => setReference(e.target.value)} placeholder="Ej: FACT-2025-00123"
-                  sx={{
-                    '& input': {
-                      color: COLORS.placeHolder, p: '0.6rem 1rem',
-                    },
-                  }}
-                />
-              </Box>
-
-              {/* Datos del cliente */}
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre del cliente</Typography>
-                <TextField fullWidth value={senderName} onChange={(e) => setSenderName(e.target.value)} placeholder="Ej: Juan Pérez"
-                  sx={{
-                    '& input': {
-                      color: COLORS.placeHolder, p: '0.6rem 1rem',
-                    },
-                  }}
-                />
-              </Box>
-
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Email del cliente</Typography>
-                <TextField
-                  fullWidth
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="micorreo@midominio.com"
-                  type="email"
-                  error={!!email && !isValidEmail(email)}
-                  helperText={!!email && !isValidEmail(email) ? 'Ingresa un email válido' : ''}
-                  sx={{
-                    '& input': {
-                      color: COLORS.placeHolder, p: '0.6rem 1rem',
-                    },
-                  }}
-                />
-              </Box>
-
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Teléfono</Typography>
-                <TextField fullWidth value={phone} onChange={(e) => setPhone(e.target.value)} inputProps={{ inputMode: 'numeric', maxLength: 15 }} placeholder="XXX XXXX XXX" type="tel"
-                sx={{
-                    '& input': {
-                      color: COLORS.placeHolder, p: '0.6rem 1rem',
-                    },
-                  }}
-                />
-              </Box>
-            
-            </Box>
-            
-            {/* Columna 2 */}
-            <Box sx={{ flex: '1' }}>
-              
-              {/* Empresa (opcional) */}
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre de la empresa (opcional)</Typography>
-                <TextField fullWidth value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Mi Empresa S.A.S."
-                  sx={{
-                    '& input': {
-                      color: COLORS.placeHolder, p: '0.6rem 1rem',
-                    },
-                  }}
-                />
-              </Box>
-
-              {/* Proveedor (solo PSE y Tarjeta) */}
-              <Box sx={{ mb: 1.5 }}>
-                <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Proveedor de pago</Typography>
-                <FormControl fullWidth>
-                  <Select
-                    value={provider}
-                    onChange={(e) => setProvider(e.target.value as ProviderUi)}
-                    IconComponent={ExpandMoreRoundedIcon}
-                    sx={{ '& .MuiSelect-select': { p: '0.6rem 1rem' } }}
-                  >
-                    <MenuItem value="Pagos PSE">Pagos PSE</MenuItem>
-                    <MenuItem value="Tarjetas de Crédito/Débito">Tarjetas de Crédito/Débito</MenuItem>
-                  </Select>
-                </FormControl>
-              </Box>
-
-              {/* ===== Inputs condicionales ===== */}
-              {paymentMethod === 'card' && (
-                <Box sx={{ mb: 1.5 }}>
-
-                  <Stack spacing={1.2}>
-                    <FormControl fullWidth>
-                      <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Datos de la Tarjeta</Typography>
-                      <TextField
-                        fullWidth
-                        value={cardNumber}
-                        onChange={(e) => handleCardNumberChange(e.target.value)}
-                        placeholder="Número de tarjeta (solo dígitos)"
-                        inputProps={{ inputMode: 'numeric' }}
-                        sx={{
-                          '& input': {
-                            color: COLORS.placeHolder, p: '0.6rem 1rem',
-                          },
-                        }}
-                      />
-                    </FormControl>
-
-                    <Stack direction="row" spacing={1.5}>
+                {/* Condicionales */}
+                {paymentMethod === 'card' && (
+                  <Box sx={{ mb: 1.5 }}>
+                    <Stack spacing={1.2}>
                       <FormControl fullWidth>
-                        <Typography variant="body2" sx={{ mt: 0.45, mb: 0.5, ml: 0.5, color: COLORS.label }}>Mes</Typography>
+                        <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Datos de la Tarjeta</Typography>
                         <TextField
                           fullWidth
-                          value={cardExpMonth}
-                          onChange={(e) => handleCardExpMonthChange(e.target.value)}
-                          inputProps={{ inputMode: 'numeric', maxLength: 2 }}
-                          placeholder="MM"
-                          error={Boolean(expFormatError || expExpiredError)}
-                          helperText={
-                            expFormatError ? 'Mes 01–12. Año YY o YYYY.' :
-                            expExpiredError ? 'La tarjeta está vencida.' :
-                            ''
-                          }
-                          sx={{
-                            '& .MuiInputBase-root': {
-                              color: COLORS.placeHolder,
-                              height: '40px',
-                              fontSize: '1rem',
-                            },
-                            '& .MuiInputBase-input': {
-                              padding: '8px 12px',
-                            },
-                          }}
+                          value={cardNumber}
+                          onChange={(e) => setCardNumber(e.target.value)}
+                          placeholder="Número de tarjeta (solo dígitos)"
+                          inputProps={{ inputMode: 'numeric' }}
+                          sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
                         />
                       </FormControl>
-                      <FormControl fullWidth sx={{ mb: 1.5 }}>
-                        <Typography variant="body2" sx={{ mt: 0.45, mb: 0.5, ml: 0.5, color: COLORS.label }}>Año</Typography>
-                        <TextField
-                          value={cardExpYear}
-                          onChange={(e) => handleCardExpYearChange(e.target.value)}
-                          fullWidth
-                          inputProps={{ inputMode: 'numeric', maxLength: 4 }}
-                          placeholder='YY o YYYY'
-                          error={Boolean(expFormatError || expExpiredError)}
-                          helperText={
-                            expFormatError ? 'Usa 2 o 4 dígitos (20YY).' :
-                            expExpiredError ? 'La tarjeta está vencida.' :
-                            ''
-                          }
-                          sx={{
-                            '& .MuiInputBase-root': {
-                              color: COLORS.placeHolder,
-                              height: '40px',
-                              fontSize: '1rem',
-                            },
-                            '& .MuiInputBase-input': {
-                              padding: '0px 12px',
-                            },
-                          }}
-                        />
+
+                      <Stack direction="row" spacing={1.5}>
+                        <FormControl fullWidth error={Boolean(expFormatError || expExpiredError)}>
+                          <Typography variant="body2" sx={{ mt: 0.45, mb: 0.5, ml: 0.5, color: COLORS.label }}>
+                            Mes
+                          </Typography>
+
+                          <Select
+                            value={cardExpMonth}
+                            onChange={(e) => handleCardExpMonthChange(String(e.target.value))}
+                            displayEmpty
+                            IconComponent={ExpandMoreRoundedIcon}
+                            renderValue={(val) => (val ? String(val) : 'MM')}
+                            sx={{ '& .MuiSelect-select': { p: '0.6rem 1rem' } }}
+                          >
+                            <MenuItem value="">
+                              <em>MM</em>
+                            </MenuItem>
+                            {Array.from({ length: 12 }, (_, i) => {
+                              const m = String(i + 1).padStart(2, '0')
+                              return (
+                                <MenuItem key={m} value={m}>
+                                  {m}
+                                </MenuItem>
+                              )
+                            })}
+                          </Select>
+                          <FormHelperText>
+                            {expFormatError
+                              ? 'Mes 01–12. Año YY o YYYY.'
+                              : expExpiredError
+                              ? 'La tarjeta está vencida.'
+                              : ' '}
+                          </FormHelperText>
+                        </FormControl>
+                        <FormControl fullWidth sx={{ mb: 1.5 }}>
+                          <Typography variant="body2" sx={{ mt: 0.45, mb: 0.5, ml: 0.5, color: COLORS.label }}>Año</Typography>
+                          <TextField
+                            value={cardExpYear}
+                            onChange={(e) => setCardExpYear(e.target.value)}
+                            fullWidth
+                            inputProps={{ inputMode: 'numeric', maxLength: 4 }}
+                            placeholder='YY o YYYY'
+                            error={Boolean(expFormatError || expExpiredError)}
+                            helperText={
+                              expFormatError ? 'Usa 2 o 4 dígitos (20YY).' :
+                              expExpiredError ? 'La tarjeta está vencida.' : ''
+                            }
+                            sx={{ '& .MuiInputBase-root': { color: COLORS.placeHolder, height: '40px', fontSize: '1rem' },
+                                  '& .MuiInputBase-input': { padding: '0px 12px' } }}
+                          />
                         </FormControl>
                         <FormControl fullWidth sx={{ mb: 1.5 }}>
                           <Typography variant="body2" sx={{ mt: 0.45, mb: 0.5, ml: 0.5, color: COLORS.label }}>CVC</Typography>
+                          <TextField
+                            fullWidth
+                            value={cardCvc}
+                            onChange={(e) => setCardCvc(e.target.value)}
+                            inputProps={{ inputMode: 'numeric', maxLength: 4 }}
+                            placeholder='000'
+                            sx={{ '& .MuiInputBase-root': { color: COLORS.placeHolder, height: '40px', fontSize: '1rem' },
+                                  '& .MuiInputBase-input': { padding: '8px 12px' } }}
+                          />
+                        </FormControl>
+                      </Stack>
+
+                      <FormControl fullWidth>
+                        <Typography variant="body2" sx={{ mt: 0.45, mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre del Titular</Typography>
                         <TextField
                           fullWidth
-                          value={cardCvc}
-                          onChange={(e) => handleCardCvcChange(e.target.value)}
-                          inputProps={{ inputMode: 'numeric', maxLength: 4 }}
-                          placeholder='000'
-                          sx={{
-                            '& .MuiInputBase-root': {
-                              color: COLORS.placeHolder,
-                              height: '40px',
-                              fontSize: '1rem',
-                            },
-                            '& .MuiInputBase-input': {
-                              padding: '8px 12px',
-                            },
-                          }}
+                          value={cardHolder}
+                          onChange={(e) => setCardHolder(e.target.value)}
+                          placeholder="Nombre como aparece en la tarjeta"
+                          sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
                         />
-                        </FormControl>
+                      </FormControl>
                     </Stack>
+                  </Box>
+                )}
 
-                    <FormControl fullWidth>
-                      <Typography variant="body2" sx={{ mt: 0.45, mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre del Titular</Typography>
-                      <TextField
-                        fullWidth
-                        value={cardHolder}
-                        onChange={(e) => setCardHolder(e.target.value)}
-                        placeholder="Nombre como aparece en la tarjeta"
-                        sx={{
-                          '& input': {
-                            color: COLORS.placeHolder, p: '0.6rem 1rem',
-                          },
-                        }}
-                      />
-                    </FormControl>
-                  </Stack>
-                </Box>
-              )}
+                {paymentMethod === 'pse' && (
+                  <Box sx={{ mb: 1.5 }}>
+                    <Typography variant="body2" sx={{ mt: 0.5, mb: 0.5, color: COLORS.label }}>Datos PSE</Typography>
 
-              {paymentMethod === 'pse' && (
-                <Box sx={{ mb: 1.5 }}>
-                  <Typography variant="body2" sx={{ mt: 0.5, mb: 0.5, color: COLORS.label }}>Datos PSE</Typography>
-
-                  <Stack spacing={1.2}>
-                    <FormControl fullWidth>
-                      <Select
-                        value={pseBank}
-                        onChange={(e) => setPseBank(e.target.value as string)}
-                        displayEmpty
-                        sx={{ '& .MuiSelect-select': { p: '0.6rem 1rem' } }}
-                      >
-                        <MenuItem value="" sx={{ color:COLORS.placeHolder }}>Selecciona banco</MenuItem>
-                        {pseBanks.map(b => <MenuItem key={b.code} value={b.code}>{b.name}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-
-                    <Stack direction="row" spacing={1}>
-                      <FormControl fullWidth sx={{ mb: 1.5 }}>
-                        <Typography variant="body2" sx={{ mt: 0.5, mb: 0.5, ml: 0.5, color: COLORS.label }}>Tipo de Documento</Typography>
+                    <Stack spacing={1.2}>
+                      <FormControl fullWidth>
                         <Select
-                          value={pseDocType}
-                          onChange={(e) => setPseDocType(e.target.value as any)}
+                          value={pseBank}
+                          onChange={(e) => setPseBank(e.target.value as string)}
                           displayEmpty
-                          sx={{ '& .MuiSelect-select': { p: '0.5rem 1rem' } }}
+                          sx={{ '& .MuiSelect-select': { p: '0.6rem 1rem' } }}
                         >
-                          {DOC_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                          <MenuItem value="" sx={{ color: COLORS.placeHolder }}>Selecciona banco</MenuItem>
+                          {pseBanks.map(b => <MenuItem key={b.code} value={b.code}>{b.name}</MenuItem>)}
                         </Select>
                       </FormControl>
-                      
-                      <FormControl fullWidth sx={{ mb: 1.5 }}>
-                        <Typography variant="body2" sx={{ mt: 0.5, mb: 0.5, ml: 0.5, color: COLORS.label }}>Núm. de Documento</Typography>
-                        <TextField
-                          fullWidth
-                          value={pseDocNumber}
-                          onChange={(e) => setPseDocNumber(onlyDigits(e.target.value))}
-                          inputProps={{ inputMode: 'numeric', maxLength: 15 }}
-                          placeholder="1000123456"
-                          sx={{
-                            '& input': {
-                              p: '0.6rem 1rem',
-                            },
-                          }}
-                        />
+
+                      <Stack direction="row" spacing={1}>
+                        <FormControl fullWidth sx={{ mb: 1.5 }}>
+                          <Typography variant="body2" sx={{ mt: 0.5, mb: 0.5, ml: 0.5, color: COLORS.label }}>Tipo de Documento</Typography>
+                          <Select
+                            value={pseDocType}
+                            onChange={(e) => setPseDocType(e.target.value as any)}
+                            displayEmpty
+                            sx={{ '& .MuiSelect-select': { p: '0.5rem 1rem' } }}
+                          >
+                            {DOC_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                          </Select>
+                        </FormControl>
+
+                        <FormControl fullWidth sx={{ mb: 1.5 }}>
+                          <Typography variant="body2" sx={{ mt: 0.5, mb: 0.5, ml: 0.5, color: COLORS.label }}>Núm. de Documento</Typography>
+                          <TextField
+                            fullWidth
+                            value={pseDocNumber}
+                            onChange={(e) => setPseDocNumber(onlyDigits(e.target.value))}
+                            inputProps={{ inputMode: 'numeric', maxLength: 15 }}
+                            placeholder="1000123456"
+                            sx={{ '& input': { p: '0.6rem 1rem' } }}
+                          />
+                        </FormControl>
+                      </Stack>
+
+                      <FormControl fullWidth>
+                        <Typography variant="body2" sx={{ mt: 0.5, mb: 0.5, ml: 0.5, color: COLORS.label }}>Tipo de Persona</Typography>
+                        <Select
+                          value={psePersonType}
+                          onChange={(e) => setPsePersonType(e.target.value as any)}
+                          sx={{ '& .MuiSelect-select': { p: '0.6rem 1rem' } }}
+                        >
+                          {PERSON_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
+                        </Select>
                       </FormControl>
                     </Stack>
-
-                    <FormControl fullWidth>
-                      <Typography variant="body2" sx={{ mt: 0.5, mb: 0.5, ml: 0.5, color: COLORS.label }}>Tipo de Persona</Typography>
-                      <Select
-                        value={psePersonType}
-                        onChange={(e) => setPsePersonType(e.target.value as any)}
-                        sx={{ '& .MuiSelect-select': { p: '0.6rem 1rem' } }}
-                      >
-                        {PERSON_TYPES.map(t => <MenuItem key={t} value={t}>{t}</MenuItem>)}
-                      </Select>
-                    </FormControl>
-                  </Stack>
-                </Box>
-              )}
-
-              {/* Términos */}
-              <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center', mt: 1 }}>
-                <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
-                  <input
-                    type="checkbox"
-                    checked={terms}
-                    onChange={(e) => setTerms(e.target.checked)}
-                    style={{ marginRight: 5 }}
-                  />
-                  <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
-                    Acepto los{' '}
-                    <Box
-                      component="a"
-                      href="https://crosspaysolutions.com/terms-and-conditions"
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      sx={{ textDecoration: 'underline', color: 'pink.main', '&:hover': { color: 'btn1.main' } }}
-                    >
-                      Términos y Condiciones
-                    </Box>{' '}del servicio.
-                  </Typography>
-                </label>
-              </Box>
-
-              {/* Botón */}
-              <Button
-                variant="contained"
-                disabled={!canSubmit}
-                onClick={handlePay}
-                sx={{
-                  display: 'flex',
-                  justifyContent: 'center',
-                  alignItems: 'center',
-                  gap: 1,
-                  width: 'fit-content',
-                  mx: 'auto',
-                  alignSelf: 'center',
-                  background: canSubmit ? GRADIENT : COLORS.btn3,
-                  color: COLORS.bgSec,
-                  borderRadius: 999,
-                  py: 0.7,
-                  pl: 2.8,
-                  pr: 1.3,
-                  fontWeight: 700,
-                  outline: 'none',
-                  boxShadow: 'none',
-                  transition: 'transform 0.25s ease-in-out',
-                  '&:hover': {
-                    background: canSubmit ? GRADIENT : COLORS.btn3,
-                    transform: canSubmit ? 'translateY(-2px)' : 'none',
-                    boxShadow: 'none',
-                  },
-                  '&:focus': { outline: 'none' },
-                  mt: { xs: '7%', md: '2.5%' },
-                  mb: { xs: '5%', md: '0' },
-                }}
-                endIcon={
-                  <Box sx={{ width: 30, height: 30, borderRadius: '50%', bgcolor: COLORS.bgSec, display: 'grid', placeItems: 'center' }}>
-                    {loading
-                      ? <CircularProgress size={16} />
-                      : <LockRoundedIcon sx={{ fontSize: 16, color: canSubmit ? COLORS.btn1 : 'inherit' }} />
-                    }
                   </Box>
-                }
-              >
-                {loading ? 'Procesando…' : 'Realizar el pago'}
-              </Button>
+                )}
 
-            </Box>
+                {/* Términos */}
+                <Box sx={{ display: 'flex', justifyContent: 'center', alignItems: 'center', textAlign: 'center', mt: 1 }}>
+                  <label style={{ display: 'flex', alignItems: 'center', cursor: 'pointer' }}>
+                    <input
+                      type="checkbox"
+                      checked={terms}
+                      onChange={(e) => setTerms(e.target.checked)}
+                      style={{ marginRight: 5 }}
+                    />
+                    <Typography variant="body2" sx={{ fontSize: '0.75rem' }}>
+                      Acepto los{' '}
+                      <Box
+                        component="a"
+                        href="https://crosspaysolutions.com/terms-and-conditions"
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        sx={{ textDecoration: 'underline', color: 'pink.main', '&:hover': { color: 'btn1.main' } }}
+                      >
+                        Términos y Condiciones
+                      </Box>{' '}del servicio.
+                    </Typography>
+                  </label>
+                </Box>
+
+                {/* Botón */}
+                <Button
+                  variant="contained"
+                  disabled={!canSubmit}
+                  onClick={handlePay}
+                  sx={{
+                    display: 'flex',
+                    justifyContent: 'center',
+                    alignItems: 'center',
+                    gap: 1,
+                    width: 'fit-content',
+                    mx: 'auto',
+                    alignSelf: 'center',
+                    background: canSubmit ? GRADIENT : COLORS.btn3,
+                    color: COLORS.bgSec,
+                    borderRadius: 999,
+                    py: 0.7,
+                    pl: 2.8,
+                    pr: 1.3,
+                    fontWeight: 700,
+                    outline: 'none',
+                    boxShadow: 'none',
+                    transition: 'transform 0.25s ease-in-out',
+                    '&:hover': {
+                      background: canSubmit ? GRADIENT : COLORS.btn3,
+                      transform: canSubmit ? 'translateY(-2px)' : 'none',
+                      boxShadow: 'none',
+                    },
+                    '&:focus': { outline: 'none' },
+                    mt: { xs: '7%', md: '2.5%' },
+                    mb: { xs: '5%', md: '0' },
+                  }}
+                  endIcon={
+                    <Box sx={{ width: 30, height: 30, borderRadius: '50%', bgcolor: COLORS.bgSec, display: 'grid', placeItems: 'center' }}>
+                      {loading
+                        ? <CircularProgress size={16} />
+                        : <LockRoundedIcon sx={{ fontSize: 16, color: canSubmit ? COLORS.btn1 : 'inherit' }} />
+                      }
+                    </Box>
+                  }
+                >
+                  {loading ? 'Procesando…' : 'Realizar el pago'}
+                </Button>
+              </Box>
+            </Stack>
           </Stack>
-        </Stack>
+        </Paper>
+      </Box>
 
-      </Paper>
-
-      <Snackbar
-        open={snack.open}
-        autoHideDuration={7000}
-        onClose={() => setSnack(s => ({ ...s, open: false }))}
-        anchorOrigin={{ vertical: 'bottom', horizontal: 'center' }}
-      >
-        <Alert severity={snack.type} onClose={() => setSnack(s => ({ ...s, open: false }))} variant="filled">
-          {snack.msg}
-        </Alert>
-      </Snackbar>
-    </Box>
+      {/* ===== Modal de aviso (sin botones) ===== */}
+      <Dialog open={dialog.open} onClose={() => setDialog(d => ({ ...d, open: false }))} maxWidth="xs" fullWidth>
+        <DialogTitle sx={{ display: 'flex', alignItems: 'center', gap: 1 }}>
+          {dialog.type === 'success' && <CheckRoundedIcon color="success" />}
+          {dialog.type === 'error' && (
+            <Alert severity="error" icon={false} sx={{ p: 0, m: 0, fontWeight: 700, bgcolor: 'transparent' }} />
+          )}
+          <Typography variant="h6" fontWeight={800}>
+            {dialog.title || (dialog.type === 'success' ? 'Operación exitosa' : dialog.type === 'error' ? 'Ocurrió un problema' : 'Aviso')}
+          </Typography>
+        </DialogTitle>
+        <DialogContent dividers>
+          {dialog.type === 'error'
+            ? <Alert severity="error">{dialog.message}</Alert>
+            : <Typography variant="body2">{dialog.message}</Typography>
+          }
+          {/* Mensajes aclaratorios */}
+          {dialog.type === 'success' && (
+            <Typography variant="caption" display="block" sx={{ mt: 1.5, color: 'text.secondary' }}>
+              {paymentMethod === 'pse'
+                ? 'Serás redirigido automáticamente a la ventana de pagos PSE para completar el proceso.'
+                : 'Por favor revisa tu bandeja de correo electrónico para más detalles de la transferencia.'}
+            </Typography>
+          )}
+        </DialogContent>
+      </Dialog>
     </>
   )
 }
