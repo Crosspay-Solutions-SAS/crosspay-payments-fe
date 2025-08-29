@@ -229,11 +229,11 @@ export default function PaymentCard() {
   const showNotice = (type: 'success'|'error'|'info', title: string, message: string) =>
     setDialog({ open: true, type, title, message })
 
-  const handleAmountChange = (val: string) => setAmountRaw(onlyDigits(val))
-  const handleCardNumberChange = (v: string) => setCardNumber(onlyDigits(v).slice(0, 19))
+  //const handleAmountChange = (val: string) => setAmountRaw(onlyDigits(val))
+  //const handleCardNumberChange = (v: string) => setCardNumber(onlyDigits(v).slice(0, 19))
   const handleCardExpMonthChange = (v: string) => setCardExpMonth(onlyDigits(v).slice(0, 2))
-  const handleCardExpYearChange = (v: string) => setCardExpYear(onlyDigits(v).slice(0, 4))
-  const handleCardCvcChange = (v: string) => setCardCvc(onlyDigits(v).slice(0, 4))
+  //const handleCardExpYearChange = (v: string) => setCardExpYear(onlyDigits(v).slice(0, 4))
+  //const handleCardCvcChange = (v: string) => setCardCvc(onlyDigits(v).slice(0, 4))
 
   // Submit
   const handlePay = async () => {
