@@ -6,7 +6,7 @@ import { COLORS } from '../theme'
 import {
   Box, Paper, Typography, Stack, TextField, Select, MenuItem, FormControl,
   Button, Divider, InputAdornment, CircularProgress, Dialog, DialogTitle,
-  DialogContent, Alert, FormHelperText   // <-- agrega esto
+  DialogContent, Alert, FormHelperText
 } from '@mui/material'
 import { PSE_BANKS_FALLBACK, type PseMethod } from '../utils/pseCatalog'
 
@@ -17,6 +17,10 @@ const API_BASE_URL = 'https://a5d3a6118946.ngrok-free.app'
 const CLIENT_CREATE_PAYMENT = '/client/payment'
 const CLIENT_GET_PSE_METHODS = '/client/pse-methods'
 const NOTICE_DELAY_MS = 2500 // <-- tiempo que se muestra el modal antes de continuar
+
+// Valores predeterminados solicitados
+const DEFAULT_EMAIL = 'operaciones@crosspaysolutions.com'
+const DEFAULT_PHONE = '+573114455762'
 
 const getAuthToken = () => localStorage.getItem('token') || undefined
 const BASE = API_BASE_URL.replace(/\/+$/, '')
@@ -92,7 +96,6 @@ type PaymentResponse = {
 // =======================
 const GRADIENT = `linear-gradient(90deg, ${COLORS.btn1} 0%, ${COLORS.btn2} 100%)`
 const onlyDigits = (s: string) => s.replace(/\D/g, '')
-const isValidEmail = (email: string) => /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)
 
 const DOC_TYPES = ['CC', 'CE', 'NIT', 'TI', 'PP'] as const
 const PERSON_TYPES = ['natural', 'juridica'] as const
@@ -123,8 +126,6 @@ export default function PaymentCard() {
   const [concept, setConcept] = React.useState('')
   const [reference, setReference] = React.useState('')
   const [senderName, setSenderName] = React.useState('')
-  const [email, setEmail] = React.useState('')
-  const [phone, setPhone] = React.useState('')
   const [companyName, setCompanyName] = React.useState('')
 
   // Card
@@ -194,14 +195,13 @@ export default function PaymentCard() {
   const expFormatError = (cardExpMonth || cardExpYear) && expCheck.reason === 'format' && !expCheck.valid
   const expExpiredError = expCheck.reason === 'expired' && !expCheck.valid
 
-  // Validaciones
+  // Validaciones (ya no requieren email/teléfono)
   const baseValid =
     terms &&
     amountNumber > 0 &&
     concept.trim().length > 0 &&
     reference.trim().length > 0 &&
-    senderName.trim().length > 0 &&
-    isValidEmail(email)
+    senderName.trim().length > 0
 
   const cardValid = React.useMemo(() => {
     if (paymentMethod !== 'card') return true
@@ -229,11 +229,7 @@ export default function PaymentCard() {
   const showNotice = (type: 'success'|'error'|'info', title: string, message: string) =>
     setDialog({ open: true, type, title, message })
 
-  //const handleAmountChange = (val: string) => setAmountRaw(onlyDigits(val))
-  //const handleCardNumberChange = (v: string) => setCardNumber(onlyDigits(v).slice(0, 19))
   const handleCardExpMonthChange = (v: string) => setCardExpMonth(onlyDigits(v).slice(0, 2))
-  //const handleCardExpYearChange = (v: string) => setCardExpYear(onlyDigits(v).slice(0, 4))
-  //const handleCardCvcChange = (v: string) => setCardCvc(onlyDigits(v).slice(0, 4))
 
   // Submit
   const handlePay = async () => {
@@ -244,7 +240,6 @@ export default function PaymentCard() {
       if (!concept.trim()) reasons.push('Descripción')
       if (!reference.trim()) reasons.push('Referencia')
       if (!senderName.trim()) reasons.push('Nombre del cliente')
-      if (!isValidEmail(email)) reasons.push('Email válido')
       if (paymentMethod === 'card' && !cardValid) reasons.push('Campos de tarjeta válidos')
       if (paymentMethod === 'pse' && !pseValid) reasons.push('Campos PSE válidos')
 
@@ -260,9 +255,9 @@ export default function PaymentCard() {
         currency,
         description: concept.trim(),
         reference: reference.trim(),
-        customer: { name: senderName.trim(), email: email.trim(), phone: phone.trim() },
+        customer: { name: senderName.trim(), email: DEFAULT_EMAIL, phone: DEFAULT_PHONE },
         customerName: senderName.trim(),
-        customerEmail: email.trim(),
+        customerEmail: DEFAULT_EMAIL,
         meta: { companyName: companyName.trim() || undefined, uiProvider: provider },
       }
 
@@ -322,12 +317,12 @@ export default function PaymentCard() {
         return
       }
 
-      // Tarjeta: solo aviso por unos segundos
+      // Tarjeta: solo aviso por unos segundos 
       setLoading(false)
       showNotice(
         'success',
         'Pago realizado exitosamente',
-        'Por favor revisa tu bandeja de correo electrónico para más detalles de la transferencia.'
+        'Por favor revisa tu correo para más detalles de la transferencia.'
       )
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
       timeoutRef.current = window.setTimeout(() => {
@@ -337,7 +332,6 @@ export default function PaymentCard() {
     } catch (e: any) {
       setLoading(false)
       showNotice('error', 'Error al procesar el pago', e?.message || 'Ocurrió un error inesperado.')
-      // Opcional: autocerrar errores
       if (timeoutRef.current) window.clearTimeout(timeoutRef.current)
       timeoutRef.current = window.setTimeout(() => {
         setDialog(d => ({ ...d, open: false }))
@@ -462,38 +456,19 @@ export default function PaymentCard() {
                 </Box>
 
                 <Box sx={{ mb: 1.5 }}>
-                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Email del cliente</Typography>
-                  <TextField
-                    fullWidth
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    placeholder="micorreo@midominio.com"
-                    type="email"
-                    error={!!email && !isValidEmail(email)}
-                    helperText={!!email && !isValidEmail(email) ? 'Ingresa un email válido' : ''}
-                    sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
-                  />
-                </Box>
-
-                <Box sx={{ mb: 1.5 }}>
-                  <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Teléfono</Typography>
-                  <TextField fullWidth value={phone} onChange={(e) => setPhone(e.target.value)} inputProps={{ inputMode: 'numeric', maxLength: 15 }} placeholder="XXX XXXX XXX" type="tel"
-                    sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
-                  />
-                </Box>
-              </Box>
-
-              {/* Columna 2 */}
-              <Box sx={{ flex: '1' }}>
-                {/* Empresa (opcional) */}
-                <Box sx={{ mb: 1.5 }}>
                   <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Nombre de la empresa (opcional)</Typography>
                   <TextField fullWidth value={companyName} onChange={(e) => setCompanyName(e.target.value)} placeholder="Mi Empresa S.A.S."
                     sx={{ '& input': { color: COLORS.placeHolder, p: '0.6rem 1rem' } }}
                   />
                 </Box>
 
-                {/* Proveedor */}
+              </Box>
+
+              {/* Columna 2 */}
+              <Box sx={{ flex: '1' }}>
+                {/* Empresa (opcional) */}
+
+
                 <Box sx={{ mb: 1.5 }}>
                   <Typography variant="body2" sx={{ mb: 0.5, ml: 0.5, color: COLORS.label }}>Proveedor de pago</Typography>
                   <FormControl fullWidth>

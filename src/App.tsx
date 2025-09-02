@@ -7,7 +7,7 @@ import '@fontsource/dm-sans/400.css'
 import '@fontsource/dm-sans/500.css'
 import '@fontsource/dm-sans/700.css'
 
-import { Routes, Route, Navigate } from 'react-router-dom'
+import { Routes, Route } from 'react-router-dom'
 
 import PaymentCard from './pages/PaymentCard'
 import Dashboard from './pages/Dashboard'
@@ -30,16 +30,12 @@ export default function App() {
       <CssBaseline />
       <Routes>
         {/* Pública */}
-        <Route path="/payments" element={<PaymentCard />} />
+        <Route path="/" element={<PaymentCard />} />
 
         {/* Admin directo */}
         <Route path="/admin" element={<Dashboard />} />
         <Route path="/cuenta" element={<Cuenta />} />
         <Route path="/configuracion" element={<Configuracion />} />
-
-
-        {/* Redirigir raíz directamente a admin */}
-        <Route path="/" element={<Navigate to="/payments" replace />} />
 
         <Route
           path="*"
